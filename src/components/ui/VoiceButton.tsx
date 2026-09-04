@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Pressable, Text, View, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { Audio } from 'expo-audio';
+import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 import { getSupabase } from '@/lib/supabase';
 import { appendVoiceLog } from '@/sync/mutations';
@@ -12,22 +12,22 @@ interface Props {
 }
 
 export function VoiceButton({ jobId, onResult }: Props) {
-  const [recording, setRecording] = React.useState<Audio.Recording | null>(null);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [isRecording, setIsRecording] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string>('');
 
   async function startRecording() {
     try {
-      const perm = await Audio.requestPermissionsAsync();
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
         Alert.alert('Microphone needed', 'Enable mic permission to use Voice-to-Job.');
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await rec.startAsync();
-      setRecording(rec);
+      await AudioModule.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setIsRecording(true);
       setStatus('Listening… hold and speak');
     } catch (e: any) {
       Alert.alert('Recording failed', e.message);
@@ -35,15 +35,15 @@ export function VoiceButton({ jobId, onResult }: Props) {
   }
 
   async function stopAndProcess() {
-    if (!recording) return;
+    if (!isRecording) return;
     setBusy(true);
     setStatus('Processing…');
     try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
+      await recorder.stop();
+      const uri = recorder.uri;
+      setIsRecording(false);
       if (!uri) throw new Error('No audio file');
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await AudioModule.setAudioModeAsync({ allowsRecording: false });
 
       // Upload to Edge Function
       const supabase = getSupabase();
@@ -85,7 +85,7 @@ export function VoiceButton({ jobId, onResult }: Props) {
     }
   }
 
-  const isHolding = !!recording;
+  const isHolding = isRecording;
 
   return (
     <View style={styles.wrap}>
