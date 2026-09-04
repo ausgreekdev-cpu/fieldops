@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Image, Pressable } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +9,7 @@ import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
 import { checkEntitlement } from '@/lib/revenuecat';
+import { companySchema } from '@/lib/validation';
 
 export default function SettingsScreen() {
   const [company, setCompany] = React.useState<any>(null);
@@ -64,6 +65,8 @@ export default function SettingsScreen() {
 
   async function handleSave() {
     if (!company) { Alert.alert('No company'); return; }
+    const parsed = companySchema.safeParse({ name, abn });
+    if (!parsed.success) { Alert.alert('Validation', parsed.error.issues.map(i=>i.message).join('\n')); return; }
     setSaving(true);
     try {
       const db = getRawDb();
@@ -120,6 +123,10 @@ export default function SettingsScreen() {
           {!isPro && <Button title="Unlock Pro →" onPress={() => setShowPaywall(true)} />}
         </View>
 
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Button title="Sync Debug →" variant="secondary" size="sm" onPress={() => router.push('/debug' as any)} />
+          <Button title="Team →" variant="ghost" size="sm" onPress={() => router.push('/(tabs)/team' as any)} />
+        </View>
         <Text style={styles.foot}>Public repo: https://github.com/ausgreekdev-cpu/fieldops • Secrets via supabase secrets set (never committed)</Text>
       </ScrollView>
       <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} onProGranted={() => setIsPro(true)} feature="Pro features" />

@@ -19,5 +19,5 @@
     "isolatedModules": true
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
-  "exclude": ["node_modules", "supabase/functions", "scripts/e2e-offline.test.ts"]
+  "exclude": ["node_modules", "supabase/functions", "scripts/e2e-offline.test.ts", "__tests__"]
 }

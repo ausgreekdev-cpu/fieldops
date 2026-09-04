@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
+import { jobCreateSchema } from '@/lib/validation';
 
 function uuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r=(Math.random()*16)|0; const v=c==='x'? r : (r&0x3)|0x8; return v.toString(16); }); }
 
@@ -17,8 +18,9 @@ export default function NewJobScreen() {
   const [saving, setSaving] = React.useState(false);
 
   async function handleSave() {
-    if (!title.trim() || !customerName.trim() || !address.trim()) {
-      Alert.alert('Missing fields', 'Title, Customer and Address are required');
+    const parsed = jobCreateSchema.safeParse({ title, customerName, customerPhone: phone, address, notes });
+    if (!parsed.success) {
+      Alert.alert('Validation', parsed.error.issues.map(i => i.message).join('\n'));
       return;
     }
     setSaving(true);

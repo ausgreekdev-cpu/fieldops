@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
+import { inviteSchema } from '@/lib/validation';
 
 interface Member { id: string; display_name: string | null; phone: string | null; role: string; }
 
@@ -52,7 +53,9 @@ export default function TeamScreen() {
   React.useEffect(() => { load(); }, [load]);
 
   async function handleInvite() {
-    if (!invitePhone.trim() || !companyId) { Alert.alert('Enter phone (+61) and ensure company exists'); return; }
+    const parsed = inviteSchema.safeParse({ phone: invitePhone, displayName: inviteName, role });
+    if (!parsed.success) { Alert.alert('Validation', parsed.error.issues.map(i=>i.message).join('\n')); return; }
+    if (!companyId) { Alert.alert('No company'); return; }
     setSaving(true);
     try {
       const supabase = getSupabase();
