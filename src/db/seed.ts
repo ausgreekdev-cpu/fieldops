@@ -53,4 +53,26 @@ export async function seedDefaultChecklists(companyId: string) {
   console.log('[seed] Inserted default checklist templates for', companyId);
 }
 
-export { DEFAULT_TEMPLATES };
+const DEMO_JOBS = [
+  { title: 'Switchboard upgrade — 12 Smith St', customer_name: 'Jane Smith', customer_phone: '+61 400 111 222', address: '12 Smith St, Perth WA 6000', description: 'Replace 3-phase board, test & tag', status: 'scheduled' as const },
+  { title: 'Leaking tap — 45 High Rd', customer_name: 'Bob Lee', customer_phone: '+61 400 333 444', address: '45 High Rd, Fremantle WA 6160', description: 'Kitchen mixer cartridge', status: 'in_progress' as const },
+  { title: 'AC service — 8 Beach Ave', customer_name: 'Krystal Bloom', customer_phone: '+61 400 555 666', address: '8 Beach Ave, Cottesloe WA 6011', description: 'Quarterly service, filter clean', status: 'completed' as const },
+];
+
+export async function seedDemoJobs(companyId: string, assignedTo?: string) {
+  const db = getRawDb();
+  const existing = (await db.getFirstAsync(`SELECT COUNT(*) as c FROM jobs WHERE company_id=?`, [companyId])) as { c: number } | null;
+  if (existing && existing.c > 0) return;
+  const now = new Date().toISOString();
+  for (const j of DEMO_JOBS) {
+    const id = uuid();
+    await db.runAsync(
+      `INSERT INTO jobs (id, local_id, company_id, assigned_to, customer_name, customer_phone, address, title, description, status, scheduled_at, materials, notes, version, created_at, updated_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', NULL, 1, ?, ?, 0)`,
+      [id, id, companyId, assignedTo ?? null, j.customer_name, j.customer_phone, j.address, j.title, j.description, j.status, now, now, now]
+    );
+  }
+  console.log('[seed] Demo jobs inserted for', companyId);
+}
+
+export { DEFAULT_TEMPLATES, DEMO_JOBS };

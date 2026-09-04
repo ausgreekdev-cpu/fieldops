@@ -25,12 +25,15 @@ export default function OnboardingScreen() {
       const { error: uErr } = await supabase.from('users').update({ company_id: company.id, display_name: name.trim(), role: 'owner' }).eq('id', user.id);
       if (uErr) throw uErr;
 
-      // Also cache locally for offline
+      // Also cache locally for offline + seed demo data
       try {
         const db = getRawDb();
         const now = new Date().toISOString();
         await db.runAsync(`INSERT INTO companies (id, name, abn, created_at, updated_at, synced) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET name=excluded.name`, [company.id, name.trim(), abn.trim(), now, now]);
-      } catch {}
+        const { seedDefaultChecklists, seedDemoJobs } = await import('@/db/seed');
+        await seedDefaultChecklists(company.id);
+        await seedDemoJobs(company.id, user.id);
+      } catch (e) { console.warn('[onboarding seed]', e); }
 
       router.replace('/(tabs)/jobs');
     } catch (e: any) {

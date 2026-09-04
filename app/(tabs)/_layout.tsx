@@ -17,6 +17,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="checklists" options={{ title: 'Safety', tabBarIcon: () => <Text style={{ fontSize: 20 }}>✓</Text> }} />
       <Tabs.Screen name="invoices" options={{ title: 'Invoices', tabBarIcon: () => <Text style={{ fontSize: 20 }}>＄</Text> }} />
       <Tabs.Screen name="settings" options={{ href: null, title: 'Settings' }} />
+      <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text> }} />
     </Tabs>
   );
 }
