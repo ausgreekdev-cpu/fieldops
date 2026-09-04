@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+.expo-shared/
+*.log
+.env
+.env.local
+supabase/.env.local
+.expo/*
+.expo-shared/*
+.DS_Store
+.idea/
+*.db
+*.sqlite
