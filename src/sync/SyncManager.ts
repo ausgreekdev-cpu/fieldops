@@ -22,7 +22,7 @@ const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 5 * 60 * 1000; // 5 min
 const MAX_ATTEMPTS = 10;
 
-type TableName = 'jobs' | 'job_photos' | 'job_signatures' | 'checklist_submissions' | 'invoices' | 'companies';
+type TableName = 'jobs' | 'job_photos' | 'job_signatures' | 'checklist_submissions' | 'compliance_checklists' | 'invoices' | 'companies';
 
 interface OutboxRow {
   id: string;
@@ -219,21 +219,43 @@ export class SyncManager {
     const payload = JSON.parse(row.payload);
     const table = row.table_name;
 
-    // Handle storage uploads for photos (local_uri -> storage)
-    if (table === 'job_photos' && payload.local_uri) {
+    // Handle storage uploads for photos/signatures (local_uri -> storage)
+    if ((table === 'job_photos' || table === 'job_signatures') && payload.local_uri) {
       const fileInfo = await FileSystem.getInfoAsync(payload.local_uri);
       if (fileInfo.exists) {
         const base64 = await FileSystem.readAsStringAsync(payload.local_uri, { encoding: FileSystem.EncodingType.Base64 });
-        // Convert to ArrayBuffer via fetch-like upload — supabase-js expects Blob/Uint8Array
         const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-        const { error: uploadErr } = await this.supabase.storage
-          .from('job-photos')
-          .upload(payload.storage_path, bytes, { contentType: 'image/jpeg', upsert: true });
+        const bucket = table === 'job_signatures' ? 'signatures' : 'job-photos';
+        const contentType = table === 'job_signatures' ? 'image/png' : 'image/jpeg';
+        const { error: uploadErr } = await this.supabase.storage.from(bucket).upload(payload.storage_path, bytes, { contentType, upsert: true });
         if (uploadErr) throw uploadErr;
       }
-      // Remove local_uri before DB insert, store only storage_path
-      const { local_uri, ...rest } = payload;
-      const { error } = await this.supabase.from('job_photos').upsert(rest, { onConflict: 'id' });
+      const { local_uri, _localPhotoMap, ...rest } = payload as any;
+      const { error } = await this.supabase.from(table).upsert(rest, { onConflict: 'id' });
+      if (error) throw error;
+      return;
+    }
+
+    // Checklist submissions — handle embedded photo uploads + strip private field
+    if (table === 'checklist_submissions' && (payload as any)._localPhotoMap) {
+      const map = (payload as any)._localPhotoMap as Record<string, string>;
+      for (const [key, localUri] of Object.entries(map)) {
+        try {
+          const info = await FileSystem.getInfoAsync(localUri);
+          if (info.exists) {
+            const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+            const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+            // Reuse job-photos bucket path if available in photo_proofs, else generic
+            const proofs = (payload.photo_proofs as string[]) ?? [];
+            const storagePath = proofs.find(p => p.includes(key)) ?? `${(payload as any).company_id}/${(payload as any).job_id}/check_${key}.jpg`;
+            await this.supabase.storage.from('job-photos').upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true });
+          }
+        } catch {}
+      }
+      const { _localPhotoMap, ...rest } = payload as any;
+      // Also strip synced
+      const { synced, ...clean } = rest;
+      const { error } = await this.supabase.from('checklist_submissions').upsert(clean, { onConflict: 'id' });
       if (error) throw error;
       return;
     }
@@ -259,8 +281,7 @@ export class SyncManager {
   private async markRecordSynced(table: TableName, recordId: string) {
     try {
       const db = getRawDb();
-      // map table to sqlite table name (snake_case)
-      const sqliteTable = table === 'job_photos' ? 'job_photos' : table;
+      const sqliteTable = table === 'job_photos' ? 'job_photos' : table === 'job_signatures' ? 'job_signatures' : table === 'compliance_checklists' ? 'compliance_checklists' : table;
       await db.runAsync(`UPDATE ${sqliteTable} SET synced=1 WHERE id=?`, [recordId]);
     } catch {}
   }

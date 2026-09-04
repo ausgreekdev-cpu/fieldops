@@ -47,5 +47,28 @@ export interface ChecklistField {
   options?: string[];
 }
 
+export interface ChecklistTemplate {
+  id: string;
+  companyId: string;
+  name: string;
+  description?: string;
+  fields: ChecklistField[];
+  isActive: boolean;
+  createdAt?: string;
+}
+
+export interface ChecklistSubmission {
+  id: string;
+  jobId: string;
+  checklistId: string;
+  companyId: string;
+  responses: Record<string, unknown>;
+  photoProofs: string[]; // storage paths or local uris
+  signedBy?: string;
+  signedAt?: string;
+  result: 'pass' | 'fail' | 'pending';
+  createdAt: string;
+}
+
 export type OutboxOp = 'insert' | 'update' | 'delete';
 export type OutboxStatus = 'pending' | 'syncing' | 'failed';

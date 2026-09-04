@@ -43,7 +43,9 @@
     "zustand": "^5.0.0",
     "@tanstack/react-query": "^5.60.0",
     "react-native-svg": "15.8.0",
-    "@react-pdf/renderer": "^4.0.0"
+    "@react-pdf/renderer": "^4.0.0",
+    "react-native-signature-canvas": "^5.0.1",
+    "react-native-webview": "^13.12.0"
   },
   "devDependencies": {
     "@types/react": "~18.3.12",
