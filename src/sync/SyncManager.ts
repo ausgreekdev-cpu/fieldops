@@ -260,20 +260,47 @@ export class SyncManager {
       return;
     }
 
+    // Invoices — handle PDF upload + strip private field
+    if (table === 'invoices' && (payload as any)._localPdfUri) {
+      const localUri = (payload as any)._localPdfUri as string;
+      try {
+        const info = await FileSystem.getInfoAsync(localUri);
+        if (info.exists) {
+          const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const storagePath = (payload as any).pdf_path as string;
+          await this.supabase.storage.from('invoices').upload(storagePath, bytes, { contentType: 'application/pdf', upsert: true });
+        }
+      } catch {}
+      const { _localPdfUri, ...rest } = payload as any;
+      const { synced, ...clean } = rest;
+      if (clean.line_items && typeof clean.line_items === 'string') {
+        try { clean.line_items = JSON.parse(clean.line_items as string); } catch {}
+      }
+      const { error } = await this.supabase.from('invoices').upsert(clean, { onConflict: 'id' });
+      if (error) throw error;
+      return;
+    }
+
     // Generic table upsert/delete
     if (row.operation === 'delete') {
       const { error } = await this.supabase.from(table).delete().eq('id', row.record_id);
       if (error) throw error;
     } else {
       // Strip local-only fields like synced
-      const { synced, ...clean } = payload;
-      // Ensure materials is jsonb not string if jobs
+      const { synced, ...clean } = payload as any;
+      // Ensure jsonb fields are objects
       if (table === 'jobs' && typeof clean.materials === 'string') {
-        try {
-          clean.materials = JSON.parse(clean.materials as string);
-        } catch {}
+        try { clean.materials = JSON.parse(clean.materials as string); } catch {}
       }
-      const { error } = await this.supabase.from(table).upsert(clean, { onConflict: 'id' });
+      if (table === 'invoices' && typeof clean.line_items === 'string') {
+        try { clean.line_items = JSON.parse(clean.line_items as string); } catch {}
+      }
+      if (table === 'compliance_checklists' && typeof clean.fields === 'string') {
+        try { clean.fields = JSON.parse(clean.fields as string); } catch {}
+      }
+      const { _localPdfUri, _localPhotoMap, ...finalClean } = clean;
+      const { error } = await this.supabase.from(table).upsert(finalClean, { onConflict: 'id' });
       if (error) throw error;
     }
   }

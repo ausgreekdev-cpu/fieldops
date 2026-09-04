@@ -61,3 +61,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/parse-receipt/import_map.json"
 entrypoint = "./functions/parse-receipt/index.ts"
+
+[functions.create-payment-link]
+enabled = true
+verify_jwt = true
+import_map = "./functions/create-payment-link/import_map.json"
+entrypoint = "./functions/create-payment-link/index.ts"

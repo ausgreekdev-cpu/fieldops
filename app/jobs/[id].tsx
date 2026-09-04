@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, Linking, Modal, Pressable } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Button } from '@/components/ui/Button';
 import { VoiceButton } from '@/components/ui/VoiceButton';
 import { ChecklistForm } from '@/features/checklists/ChecklistForm';
 import { useChecklists, useChecklistSubmissions } from '@/features/checklists/useChecklists';
+import { generateInvoiceLocally, shareInvoicePdf } from '@/features/invoices/generateInvoice';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
@@ -107,10 +108,22 @@ export default function JobDetailScreen() {
         </View>
 
         <View style={styles.actions}>
-          <Button title={status === 'scheduled' ? 'Start Job' : status === 'in_progress' ? 'Mark Completed' : status === 'completed' ? 'Generate Invoice' : 'View Invoice'} onPress={async () => {
+          <Button title={status === 'scheduled' ? 'Start Job' : status === 'in_progress' ? 'Mark Completed' : status === 'completed' ? 'Generate Invoice (Offline)' : 'View Invoice'} onPress={async () => {
             if (status === 'scheduled') await updateJobStatus(id as string, 'in_progress');
             else if (status === 'in_progress') await updateJobStatus(id as string, 'completed');
-            else if (status === 'completed') Alert.alert('Invoice', 'One-tap PDF generation — see Invoices tab');
+            else if (status === 'completed') {
+              try {
+                const cid2 = cid || (job.company_id ?? job.companyId);
+                if (!cid2) throw new Error('No company');
+                const { pdfUri, number } = await generateInvoiceLocally({ jobId: id as string, companyId: cid2 });
+                Alert.alert('Invoice created offline', `${number} — ${pdfUri}\nWill sync + upload when online. Share now?`, [
+                  { text: 'Later', style: 'cancel' },
+                  { text: 'Share PDF', onPress: () => shareInvoicePdf(pdfUri, number) },
+                ]);
+              } catch (e: any) { Alert.alert('Invoice failed', e.message); }
+            } else {
+              router.push('/(tabs)/invoices' as any);
+            }
             await load();
           }} />
           <View style={styles.splitRow}>
