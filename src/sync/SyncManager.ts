@@ -219,6 +219,25 @@ export class SyncManager {
     const payload = JSON.parse(row.payload);
     const table = row.table_name;
 
+    // Companies — logo upload
+    if (table === 'companies' && (payload as any)._localLogoUri) {
+      const localUri = (payload as any)._localLogoUri as string;
+      try {
+        const info = await FileSystem.getInfoAsync(localUri);
+        if (info.exists) {
+          const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const storagePath = (payload as any).logo_url as string;
+          if (storagePath) await this.supabase.storage.from('company-logos').upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true });
+        }
+      } catch {}
+      const { _localLogoUri, ...rest } = payload as any;
+      const { synced, ...clean } = rest;
+      const { error } = await this.supabase.from('companies').update(clean).eq('id', row.record_id);
+      if (error) throw error;
+      return;
+    }
+
     // Handle storage uploads for photos/signatures (local_uri -> storage)
     if ((table === 'job_photos' || table === 'job_signatures') && payload.local_uri) {
       const fileInfo = await FileSystem.getInfoAsync(payload.local_uri);

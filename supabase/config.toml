@@ -67,3 +67,15 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/create-payment-link/import_map.json"
 entrypoint = "./functions/create-payment-link/index.ts"
+
+[functions.stripe-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/stripe-webhook/import_map.json"
+entrypoint = "./functions/stripe-webhook/index.ts"
+
+[functions.revenuecat-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/revenuecat-webhook/import_map.json"
+entrypoint = "./functions/revenuecat-webhook/index.ts"
