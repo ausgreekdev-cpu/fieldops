@@ -15,6 +15,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import * as FileSystem from 'expo-file-system';
 import { getRawDb } from '@/db/client';
 import type { OutboxOp } from '@/types';
+import { captureError, addBreadcrumb } from '@/lib/monitoring';
 
 // ── Config ──
 const BATCH_SIZE = 10;
@@ -194,6 +195,7 @@ export class SyncManager {
             row.id,
           ]);
           failed++;
+          captureError(new Error(`Sync failed ${row.table_name}/${row.record_id}: ${error}`), { table: row.table_name, attempts });
           // Also log to remote sync_logs if possible
           try {
             await this.supabase.from('sync_logs').insert({

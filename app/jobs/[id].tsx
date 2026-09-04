@@ -8,6 +8,8 @@ import { VoiceButton } from '@/components/ui/VoiceButton';
 import { ChecklistForm } from '@/features/checklists/ChecklistForm';
 import { useChecklists, useChecklistSubmissions } from '@/features/checklists/useChecklists';
 import { generateInvoiceLocally, shareInvoicePdf } from '@/features/invoices/generateInvoice';
+import { PhotoGallery } from '@/components/ui/PhotoGallery';
+import { JobEditModal } from '@/components/ui/JobEditModal';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
@@ -19,6 +21,8 @@ export default function JobDetailScreen() {
   const [companyId, setCompanyId] = React.useState<string | undefined>(undefined);
   const [showChecklist, setShowChecklist] = React.useState(false);
   const [activeTemplateId, setActiveTemplateId] = React.useState<string | null>(null);
+  const [showEdit, setShowEdit] = React.useState(false);
+  const [photoTick, setPhotoTick] = React.useState(0);
 
   const { templates } = useChecklists(companyId);
   const { subs, refresh: refreshSubs } = useChecklistSubmissions(id as string);
@@ -60,6 +64,7 @@ export default function JobDetailScreen() {
     const storagePath = `${cid}/${id}/${filename}`;
     const mgr = SyncManager.getInstance(getSupabase());
     await mgr.queueFileUpload(id as string, cid, dest, storagePath);
+    setPhotoTick(t => t + 1);
     Alert.alert('Photo saved offline', 'Will upload when back online');
   }
 
@@ -97,9 +102,14 @@ export default function JobDetailScreen() {
     <>
       <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, gap: 16 }}>
         <View style={styles.card}>
-          <Text style={styles.title}>{job.title}</Text>
-          <Text style={styles.customer}>{job.customer_name ?? job.customerName}</Text>
-          <Text style={styles.addr}>{job.address}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>{job.title}</Text>
+              <Text style={styles.customer}>{job.customer_name ?? job.customerName}</Text>
+              <Text style={styles.addr}>{job.address}</Text>
+            </View>
+            <Pressable onPress={() => setShowEdit(true)} style={styles.editBtn}><Text style={styles.editText}>Edit</Text></Pressable>
+          </View>
           <View style={styles.row}>
             <Text style={[styles.badge, badgeStyle(status)]}>{status.toUpperCase().replace('_', ' ')}</Text>
             {job.scheduled_at ? <Text style={styles.muted}>{new Date(job.scheduled_at).toLocaleString()}</Text> : null}
@@ -169,6 +179,7 @@ export default function JobDetailScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Evidence (offline-first)</Text>
+          <PhotoGallery jobId={id as string} refreshKey={photoTick} />
           <View style={styles.splitRow}>
             <Button title="📷 Photo" variant="secondary" onPress={capturePhoto} />
             <Button title="🧾 Receipt" variant="secondary" onPress={captureReceipt} />
@@ -195,6 +206,7 @@ export default function JobDetailScreen() {
           )}
         </View>
       </Modal>
+      <JobEditModal visible={showEdit} job={job} onClose={() => setShowEdit(false)} onSaved={load} />
     </>
   );
 }
@@ -207,6 +219,8 @@ function badgeStyle(s: string) {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: '#F8FAFC' },
   card: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+  editBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
+  editText: { fontWeight: '700', color: '#0F172A', fontSize: 12 },
   title: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
   customer: { fontWeight: '700', color: '#334155', marginTop: 4 },
   addr: { color: '#64748B', fontSize: 13, marginTop: 2 },
