@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { getDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
+import { requestNotificationPermission } from '@/lib/notifications';
+import { registerBackgroundSync } from '@/lib/backgroundSync';
+import { SyncManager } from '@/sync/SyncManager';
+import { initMonitoring } from '@/lib/monitoring';
 
 const queryClient = new QueryClient();
 
@@ -16,6 +20,12 @@ export default function RootLayout() {
     supabase.auth.onAuthStateChange((_event, _session) => {
       // could trigger SyncManager pull here
     });
+    // Monitoring (no-op without DSN)
+    initMonitoring(process.env.EXPO_PUBLIC_SENTRY_DSN);
+    // Init sync + notifications + background fetch (all best-effort)
+    SyncManager.getInstance(supabase).init().catch(console.error);
+    requestNotificationPermission().catch(console.error);
+    registerBackgroundSync().catch(console.error);
   }, []);
 
   return (

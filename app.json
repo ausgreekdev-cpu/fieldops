@@ -19,7 +19,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Capture job photos and receipts on site",
         "NSMicrophoneUsageDescription": "Dictate work logs hands-free",
-        "NSLocationWhenInUseUsageDescription": "Navigate to job sites"
+        "NSLocationWhenInUseUsageDescription": "Navigate to job sites",
+        "UIBackgroundModes": ["fetch", "remote-notification"]
       }
     },
     "android": {
@@ -49,7 +50,14 @@
           "cameraPermission": "Allow FieldOps to capture job evidence"
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0F172A"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

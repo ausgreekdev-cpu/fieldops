@@ -45,7 +45,10 @@
     "react-native-svg": "15.8.0",
     "@react-pdf/renderer": "^4.0.0",
     "react-native-signature-canvas": "^5.0.1",
-    "react-native-webview": "^13.12.0"
+    "react-native-webview": "^13.12.0",
+    "expo-background-fetch": "~13.0.1",
+    "expo-task-manager": "~12.0.5",
+    "expo-notifications": "~0.29.11"
   },
   "devDependencies": {
     "@types/react": "~18.3.12",
