@@ -1,0 +1,37 @@
+# FieldOps Linux — Supabase local + app (Docker)
+# Prereqs: Docker + supabase CLI on host for DB, or use supabase service below
+# Usage: docker compose -f linux/docker-compose.yml up --build
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: linux/Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - EXPO_PUBLIC_SUPABASE_URL=${EXPO_PUBLIC_SUPABASE_URL}
+      - EXPO_PUBLIC_SUPABASE_ANON_KEY=${EXPO_PUBLIC_SUPABASE_ANON_KEY}
+    depends_on:
+      - supabase
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: local Supabase stack (requires supabase CLI `supabase start` normally; this is a stub Postgres+PostgREST)
+  # For full local, run `supabase start` on host instead and point EXPO_PUBLIC_SUPABASE_URL to http://localhost:54321
+  supabase:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "54322:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    profiles: ["with-db"] # run with --profile with-db
+
+volumes:
+  pgdata:

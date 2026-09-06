@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=FieldOps
+Comment=Offline-first field worker SaaS — jobs, checklists, invoices
+Exec=fieldops
+Icon=fieldops
+Type=Application
+Categories=Office;ProjectManagement;
+Terminal=false
+StartupWMClass=FieldOps
+Keywords=field;jobs;invoices;offline;

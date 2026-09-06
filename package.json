@@ -14,7 +14,13 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "supabase:start": "supabase start",
-    "supabase:functions:serve": "supabase functions serve --env-file ./supabase/.env.local --debug"
+    "supabase:functions:serve": "supabase functions serve --env-file ./supabase/.env.local --debug",
+    "build:web": "expo export --platform web --output-dir dist",
+    "linux:docker:build": "docker build -f linux/Dockerfile -t fieldops:linux .",
+    "linux:docker:run": "docker run -p 8080:80 fieldops:linux",
+    "linux:package": "bash scripts/package-linux.sh",
+    "linux:install": "bash linux/install.sh",
+    "linux:install:user": "bash linux/install.sh --user"
   },
   "dependencies": {
     "@react-native-community/netinfo": "^11.3.1",
