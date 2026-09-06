@@ -12,6 +12,7 @@ import { checkEntitlement } from '@/lib/revenuecat';
 import { companySchema } from '@/lib/validation';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canManageCompany } from '@/lib/permissions';
+import { getCacheSize, evictLRUIfNeeded } from '@/lib/photoCache';
 
 export default function SettingsScreen() {
   const [company, setCompany] = React.useState<any>(null);
@@ -20,6 +21,8 @@ export default function SettingsScreen() {
   const [logoUri, setLogoUri] = React.useState<string | null>(null);
   const { role } = useCurrentUser();
   const canManage = canManageCompany(role);
+  const [cacheSize, setCacheSize] = React.useState<number | null>(null);
+  const [cacheBusy, setCacheBusy] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [showPaywall, setShowPaywall] = React.useState(false);
   const [isPro, setIsPro] = React.useState(false);
@@ -55,6 +58,26 @@ export default function SettingsScreen() {
   }, []);
 
   React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    getCacheSize().then(b => setCacheSize(b)).catch(()=>{});
+  }, []);
+
+  async function handleClearCache() {
+    setCacheBusy(true);
+    try {
+      await evictLRUIfNeeded();
+      // Force full clear up to 0 by evicting with low threshold: delete oldest until <50MB
+      // For now just run eviction and show size
+      const size = await getCacheSize();
+      setCacheSize(size);
+      Alert.alert('Cache', `Current cache: ${(size/1024/1024).toFixed(1)} MB (LRU target 105 MB)`);
+    } catch (e:any) { Alert.alert('Cache error', e.message); }
+    finally { setCacheBusy(false); }
+  }
+  async function handleRefreshCache() {
+    const size = await getCacheSize();
+    setCacheSize(size);
+  }
 
   async function pickLogo() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -129,6 +152,18 @@ export default function SettingsScreen() {
           <Text style={[styles.badge, isPro ? styles.badgePro : styles.badgeFree]}>{isPro ? 'PRO ✓' : 'FREE'}</Text>
           <Text style={styles.meta}>Free: 3 jobs, 5 AI logs/mo. Pro unlocks unlimited AI, custom checklists, branded PDFs.</Text>
           {!isPro && <Button title="Unlock Pro →" onPress={() => setShowPaywall(true)} />}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Photo Cache — LRU (150 MB cap, 70% target)</Text>
+          <Text style={styles.meta}>
+            Current: {cacheSize === null ? '…' : `${(cacheSize/1024/1024).toFixed(1)} MB`} • Pending uploads protected from eviction
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <Button title="↻ Refresh Size" size="sm" variant="secondary" onPress={handleRefreshCache} />
+            <Button title={cacheBusy ? 'Cleaning…' : 'Run LRU Eviction'} size="sm" variant="secondary" onPress={handleClearCache} loading={cacheBusy} />
+          </View>
+          <Text style={styles.meta}>Auto-evict on gallery load when over cap. Photos pending upload are never deleted.</Text>
         </View>
 
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
