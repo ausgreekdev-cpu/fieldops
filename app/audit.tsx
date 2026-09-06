@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, Alert, Pressable } from 'react-native';
 import { Stack } from 'expo-router';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -38,6 +40,25 @@ export default function AuditScreen() {
     } finally { setLoading(false); }
   }, []);
 
+  async function handleExportCsv() {
+    if (logs.length === 0) { Alert.alert('No logs', 'Nothing to export'); return; }
+    try {
+      const header = 'id,table_name,record_id,operation,status,created_at,error\n';
+      const rows = logs.map(l => {
+        const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        return [esc(l.id), esc(l.table_name), esc(l.record_id), esc(l.operation ?? ''), esc(l.status), esc(l.created_at), esc(l.error ?? '')].join(',');
+      }).join('\n');
+      const csv = header + rows;
+      const uri = `${FileSystem.documentDirectory}audit_${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(uri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'Share audit CSV' });
+      } else {
+        Alert.alert('CSV exported', uri);
+      }
+    } catch (e: any) { Alert.alert('Export failed', e.message); }
+  }
+
   React.useEffect(() => { load(); }, [load]);
 
   if (role && !['owner','admin'].includes(role)) {
@@ -57,7 +78,10 @@ export default function AuditScreen() {
       <Stack.Screen options={{ title: 'Audit Log', headerShown: true }} />
       <View style={styles.wrap}>
         <View style={styles.header}>
-          <Text style={styles.title}>Audit Log</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={styles.title}>Audit Log</Text>
+            <Pressable onPress={handleExportCsv} style={styles.exportBtn}><Text style={styles.exportText}>Export CSV</Text></Pressable>
+          </View>
           <Text style={styles.hint}>sync_logs + checklist history • local first, Supabase when online • role: {role ?? '…'}</Text>
         </View>
         <FlatList
@@ -96,4 +120,6 @@ const styles = StyleSheet.create({
   rowMeta: { color: '#64748B', fontSize: 11 },
   rowError: { color: '#DC2626', fontSize: 10, marginTop: 2 },
   badge: { fontWeight: '800', fontSize: 10, color: '#334155', alignSelf: 'center' },
+  exportBtn: { backgroundColor: '#0F172A', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  exportText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
 });
