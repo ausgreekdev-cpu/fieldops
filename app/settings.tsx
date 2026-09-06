@@ -131,8 +131,9 @@ export default function SettingsScreen() {
           {!isPro && <Button title="Unlock Pro →" onPress={() => setShowPaywall(true)} />}
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           <Button title="Sync Debug →" variant="secondary" size="sm" onPress={() => router.push('/debug' as any)} />
+          <Button title="Audit Log →" variant="secondary" size="sm" onPress={() => router.push('/audit' as any)} />
           <Button title="Team →" variant="ghost" size="sm" onPress={() => router.push('/(tabs)/team' as any)} />
         </View>
         <Text style={styles.foot}>Public repo: https://github.com/ausgreekdev-cpu/fieldops • Secrets via supabase secrets set (never committed)</Text>
