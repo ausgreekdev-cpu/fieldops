@@ -47,3 +47,23 @@ export async function notifyDueJob(jobTitle: string, customer: string) {
     trigger: null,
   });
 }
+
+export async function scheduleWeeklySummary(revenue: number, jobs: number) {
+  // Cancel previous weekly summaries
+  try { await Notifications.cancelAllScheduledNotificationsAsync(); } catch {}
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `Weekly FieldOps Summary`,
+      body: `Revenue $${revenue.toFixed(0)} • ${jobs} jobs • tap for analytics`,
+      sound: 'default',
+    },
+    trigger: { seconds: 60 * 60 * 24 * 7, repeats: true } as any,
+  });
+}
+
+export async function notifyWeeklySummaryNow(revenue: number, jobs: number) {
+  await Notifications.scheduleNotificationAsync({
+    content: { title: 'FieldOps Weekly', body: `Revenue $${revenue.toFixed(0)} • ${jobs} jobs this week`, sound: 'default' },
+    trigger: null,
+  });
+}

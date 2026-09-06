@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { useStats } from '@/features/analytics/useStats';
 import { useRevenueTrend } from '@/features/analytics/useRevenueTrend';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { exportJobsCsv, exportInvoicesCsv } from '@/lib/csv';
+import { exportJobsCsv, exportInvoicesCsv, exportRevenueCsv } from '@/lib/csv';
+import { notifyWeeklySummaryNow, scheduleWeeklySummary } from '@/lib/notifications';
 import { getRawDb } from '@/db/client';
 
 export default function AnalyticsScreen() {
@@ -25,6 +26,17 @@ export default function AnalyticsScreen() {
     const rows = await db.getAllAsync(`SELECT * FROM invoices LIMIT 200`) as any[];
     await exportInvoicesCsv(rows);
   }
+  async function handleExportRevenue() { await exportRevenueCsv(points); }
+  async function handleWeeklyNow() {
+    const weekRevenue = points[points.length - 1]?.revenue ?? 0;
+    const weekJobs = points[points.length - 1]?.count ?? 0;
+    await notifyWeeklySummaryNow(weekRevenue, weekJobs);
+  }
+  async function handleScheduleWeekly() {
+    const totalRev = stats?.totalRevenue ?? 0;
+    const totalJobs = stats?.totalJobs ?? 0;
+    await scheduleWeeklySummary(totalRev, totalJobs);
+  }
 
   return (
     <>
@@ -37,6 +49,7 @@ export default function AnalyticsScreen() {
             <Button title="↻ Refresh" size="sm" variant="secondary" onPress={() => { refresh(); refreshTrend(); }} />
             <Button title="Export Jobs CSV" size="sm" variant="secondary" onPress={handleExportJobs} />
             <Button title="Export Invoices CSV" size="sm" variant="secondary" onPress={handleExportInvoices} />
+            <Button title="Export Revenue CSV" size="sm" variant="secondary" onPress={handleExportRevenue} />
           </View>
         </View>
 
@@ -100,6 +113,16 @@ export default function AnalyticsScreen() {
                 <Text style={styles.hint}>{paidVsDraft.paid} paid / {paidVsDraft.paid + paidVsDraft.draft} total</Text>
               </View>
             )}
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Export & Notifications</Text>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <Button title="Revenue CSV" size="sm" variant="secondary" onPress={handleExportRevenue} />
+                <Button title="Weekly Notify Now" size="sm" variant="ghost" onPress={handleWeeklyNow} />
+                <Button title="Schedule Weekly" size="sm" variant="ghost" onPress={handleScheduleWeekly} />
+              </View>
+              <Text style={styles.hint}>Exports use expo-sharing • notifications need permission (see background sync)</Text>
+            </View>
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Quick Actions</Text>

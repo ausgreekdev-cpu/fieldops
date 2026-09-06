@@ -29,3 +29,9 @@ export async function exportInvoicesCsv(invoices: any[]) {
   const rows = invoices.map(i => [i.id, i.invoice_number, i.job_id, i.company_id, i.subtotal, i.tax, i.total, i.status, i.created_at]);
   return exportCsvAndShare('invoices', header, rows);
 }
+
+export async function exportRevenueCsv(points: Array<{ label: string; revenue: number; count: number }>) {
+  const header = ['week_label', 'revenue', 'invoice_count'];
+  const rows = points.map(p => [p.label, p.revenue, p.count]);
+  return exportCsvAndShare('revenue_trend', header, rows);
+}
