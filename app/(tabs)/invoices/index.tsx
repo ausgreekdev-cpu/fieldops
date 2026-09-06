@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, RefreshControl, Alert, Linking, Press
 import { Button } from '@/components/ui/Button';
 import { useInvoices } from '@/features/invoices/useInvoices';
 import { shareInvoicePdf, createStripePaymentLinkStub } from '@/features/invoices/generateInvoice';
+import { exportInvoicesCsv } from '@/lib/csv';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 
@@ -82,6 +83,7 @@ export default function InvoicesScreen() {
         <Text style={styles.sub}>One-tap branded PDF — offline-first, share via SMS/WhatsApp/Email</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
           <Button title="↻ Refresh" size="sm" variant="secondary" onPress={refresh} />
+          <Button title="Export CSV" size="sm" variant="secondary" onPress={() => exportInvoicesCsv(invoices as any)} />
         </View>
       </View>
 

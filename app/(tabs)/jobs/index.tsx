@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { JobCard } from '@/components/ui/JobCard';
 import { Button } from '@/components/ui/Button';
 import { useJobs } from '@/hooks/useJobs';
+import { exportJobsCsv } from '@/lib/csv';
 import type { JobStatus } from '@/types';
 
 const filters: Array<{ label: string; value: JobStatus | 'all' }> = [
@@ -22,7 +23,10 @@ export default function JobsScreen() {
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Text style={styles.title}>Jobs</Text>
-        <Button title="+ New Job" size="sm" onPress={() => router.push('/jobs/new' as any)} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Button title="Export CSV" size="sm" variant="secondary" onPress={() => exportJobsCsv(jobs as any)} />
+          <Button title="+ New Job" size="sm" onPress={() => router.push('/jobs/new' as any)} />
+        </View>
       </View>
 
       <View style={styles.chips}>
