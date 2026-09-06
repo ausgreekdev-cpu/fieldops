@@ -7,6 +7,7 @@ import { SyncManager } from '@/sync/SyncManager';
 import { inviteSchema } from '@/lib/validation';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canInvite } from '@/lib/permissions';
+import { useActivity } from '@/features/team/useActivity';
 
 interface Member { id: string; display_name: string | null; phone: string | null; role: string; }
 
@@ -19,6 +20,7 @@ export default function TeamScreen() {
   const [companyId, setCompanyId] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
 
+  const { items: activity, refresh: refreshActivity } = useActivity(10);
   const load = React.useCallback(async () => {
     try {
       const supabase = getSupabase();
@@ -51,7 +53,8 @@ export default function TeamScreen() {
         }
       }
     } catch (e) { console.warn(e); }
-  }, []);
+    refreshActivity();
+  }, [refreshActivity]);
 
   React.useEffect(() => { load(); }, [load]);
 
@@ -121,6 +124,22 @@ export default function TeamScreen() {
         data={members}
         keyExtractor={i=>i.id}
         contentContainerStyle={{ padding: 16, gap: 8 }}
+        ListHeaderComponent={
+          <View style={{ gap: 8, marginBottom: 8 }}>
+            <Text style={styles.sectionTitle}>Recent Activity</Text>
+            {activity.length === 0 ? <Text style={styles.emptySmall}>No activity yet — create a job or run a checklist</Text> : activity.map(a => (
+              <View key={a.id} style={styles.activityRow}>
+                <Text style={[styles.activityDot, a.type==='job' ? styles.dotJob : a.type==='checklist' ? styles.dotCheck : a.type==='invoice' ? styles.dotInv : styles.dotSync]}>{a.type==='job' ? '🗂' : a.type==='checklist' ? '✓' : a.type==='invoice' ? '＄' : '↻'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activityTitle} numberOfLines={1}>{a.title}</Text>
+                  <Text style={styles.activitySub}>{a.subtitle} • {new Date(a.time).toLocaleDateString()}</Text>
+                </View>
+                <Text style={[styles.activityStatus, a.status==='pass' || a.status==='paid' ? styles.statusPass : a.status==='fail' ? styles.statusFail : styles.statusPending]}>{(a.status ?? '').toUpperCase()}</Text>
+              </View>
+            ))}
+            <Text style={styles.sectionTitle}>Members ({members.length})</Text>
+          </View>
+        }
         ListEmptyComponent={<Text style={styles.empty}>No members yet</Text>}
         renderItem={({item})=>(
           <View style={styles.memberCard}>
@@ -162,4 +181,18 @@ const styles = StyleSheet.create({
   badgeAdmin: { backgroundColor:'#DBEAFE', color:'#1D4ED8' } as any,
   badgeTech: { backgroundColor:'#F1F5F9', color:'#475569' } as any,
   empty: { textAlign:'center', color:'#94A3B8', marginTop:24 },
+  sectionTitle: { fontWeight:'800', color:'#0F172A', fontSize:13, marginTop:4 },
+  emptySmall: { color:'#94A3B8', fontSize:11, textAlign:'center' },
+  activityRow: { flexDirection:'row', gap:10, alignItems:'center', backgroundColor:'#FFF', padding:10, borderRadius:10, borderWidth:1, borderColor:'#E2E8F0' },
+  activityDot: { width:28, height:28, borderRadius:14, textAlign:'center', textAlignVertical:'center', fontSize:14 } as any,
+  dotJob: { backgroundColor:'#F1F5F9' } as any,
+  dotCheck: { backgroundColor:'#DCFCE7' } as any,
+  dotInv: { backgroundColor:'#EDE9FE' } as any,
+  dotSync: { backgroundColor:'#F1F5F9' } as any,
+  activityTitle: { fontWeight:'700', color:'#0F172A', fontSize:12 },
+  activitySub: { color:'#64748B', fontSize:11 },
+  activityStatus: { fontWeight:'800', fontSize:10, paddingHorizontal:6, paddingVertical:2, borderRadius:999, overflow:'hidden' } as any,
+  statusPass: { backgroundColor:'#DCFCE7', color:'#15803D' } as any,
+  statusFail: { backgroundColor:'#FEE2E2', color:'#DC2626' } as any,
+  statusPending: { backgroundColor:'#F1F5F9', color:'#475569' } as any,
 });
