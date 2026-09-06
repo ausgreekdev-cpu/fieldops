@@ -3,14 +3,17 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from 'r
 import { Stack } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { useStats } from '@/features/analytics/useStats';
+import { useRevenueTrend } from '@/features/analytics/useRevenueTrend';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { exportJobsCsv, exportInvoicesCsv } from '@/lib/csv';
 import { getRawDb } from '@/db/client';
 
 export default function AnalyticsScreen() {
   const { stats, loading, refresh } = useStats();
+  const { points, paidVsDraft, loading: trendLoading, refresh: refreshTrend } = useRevenueTrend(6);
   const { role } = useCurrentUser();
   const [refreshing, setRefreshing] = React.useState(false);
+  const maxRevenue = Math.max(1, ...points.map(p => p.revenue));
 
   async function handleExportJobs() {
     const db = getRawDb();
@@ -26,12 +29,12 @@ export default function AnalyticsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Analytics', headerShown: true }} />
-      <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, gap: 16 }} refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={async ()=>{setRefreshing(true); await refresh(); setRefreshing(false);}} />}>
+      <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, gap: 16 }} refreshControl={<RefreshControl refreshing={refreshing || loading || trendLoading} onRefresh={async ()=>{setRefreshing(true); await Promise.all([refresh(), refreshTrend()]); setRefreshing(false);}} />}>
         <View style={styles.header}>
           <Text style={styles.title}>FieldOps Analytics</Text>
           <Text style={styles.hint}>Local-first • Offline • Role: {role ?? '…'}</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <Button title="↻ Refresh" size="sm" variant="secondary" onPress={refresh} />
+            <Button title="↻ Refresh" size="sm" variant="secondary" onPress={() => { refresh(); refreshTrend(); }} />
             <Button title="Export Jobs CSV" size="sm" variant="secondary" onPress={handleExportJobs} />
             <Button title="Export Invoices CSV" size="sm" variant="secondary" onPress={handleExportInvoices} />
           </View>
@@ -58,6 +61,45 @@ export default function AnalyticsScreen() {
                 </View>
               ))}
             </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Revenue — Weekly Trend (6 weeks)</Text>
+              {points.length === 0 ? <Text style={styles.muted}>No revenue yet</Text> : (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 100, marginTop: 8 }}>
+                  {points.map(p => (
+                    <View key={p.label} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+                      <View style={{ width: '100%', height: Math.max(4, (p.revenue / maxRevenue) * 80), backgroundColor: p.revenue > 0 ? '#0F172A' : '#E2E8F0', borderRadius: 6 }} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#475569' }}>{p.label}</Text>
+                      <Text style={{ fontSize: 9, color: '#94A3B8' }}>${p.revenue.toFixed(0)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <Text style={styles.hint}>Bars = revenue per week • counts: {points.map(p => p.count).join(' • ')}</Text>
+            </View>
+
+            {paidVsDraft && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Paid vs Draft</Text>
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                  <View style={[styles.statCard, { flex: 1 }]}>
+                    <Text style={[styles.statNum, { color: '#16A34A' }]}>{paidVsDraft.paid}</Text>
+                    <Text style={styles.statLabel}>Paid</Text>
+                    <Text style={styles.statSub}>${paidVsDraft.paidSum.toFixed(0)}</Text>
+                  </View>
+                  <View style={[styles.statCard, { flex: 1 }]}>
+                    <Text style={styles.statNum}>{paidVsDraft.draft}</Text>
+                    <Text style={styles.statLabel}>Draft</Text>
+                    <Text style={styles.statSub}>${paidVsDraft.draftSum.toFixed(0)}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
+                  <View style={{ flex: paidVsDraft.paid, backgroundColor: '#16A34A' }} />
+                  <View style={{ flex: Math.max(0.1, paidVsDraft.draft), backgroundColor: '#E2E8F0' }} />
+                </View>
+                <Text style={styles.hint}>{paidVsDraft.paid} paid / {paidVsDraft.paid + paidVsDraft.draft} total</Text>
+              </View>
+            )}
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Quick Actions</Text>
