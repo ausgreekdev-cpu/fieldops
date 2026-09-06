@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canEditTemplates } from '@/lib/permissions';
 import type { ChecklistField } from '@/types';
 
 const FIELD_TYPES: ChecklistField['type'][] = ['pass_fail', 'checkbox', 'text', 'photo', 'select'];
@@ -14,6 +16,8 @@ function uuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,
 export default function ChecklistEditorScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === 'new';
+  const { role } = useCurrentUser();
+  const canEdit = canEditTemplates(role);
   const [name, setName] = React.useState('');
   const [desc, setDesc] = React.useState('');
   const [fields, setFields] = React.useState<ChecklistField[]>([
@@ -49,6 +53,7 @@ export default function ChecklistEditorScreen() {
   }
 
   async function handleSave() {
+    if (!canEdit) { Alert.alert('Permission denied', 'Only owner/admin can edit templates'); return; }
     if (!name.trim()) { Alert.alert('Name required'); return; }
     if (fields.length === 0) { Alert.alert('Add at least one field'); return; }
     // normalize keys
@@ -96,10 +101,21 @@ export default function ChecklistEditorScreen() {
 
   if (loading) return <View style={styles.wrap}><Text style={styles.muted}>Loading…</Text></View>;
 
+  if (!canEdit) {
+    return (
+      <View style={[styles.wrap, { padding: 16, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.title}>Permission denied</Text>
+        <Text style={styles.hint}>Only owner/admin can edit templates. Your role: {role ?? 'unknown'}</Text>
+        <View style={{ height: 16 }} />
+        <Button title="Back" onPress={() => router.back()} />
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, gap: 16 }}>
       <Text style={styles.title}>{isNew ? 'New Template' : 'Edit Template'}</Text>
-      <Text style={styles.hint}>Custom pass/fail items per job type — changes sync offline-first</Text>
+      <Text style={styles.hint}>Custom pass/fail items per job type — changes sync offline-first • Role: {role}</Text>
 
       <Text style={styles.label}>Name *</Text>
       <TextInput value={name} onChangeText={setName} placeholder="e.g. Pre-Start Electrical" placeholderTextColor="#94A3B8" style={styles.input} />

@@ -5,10 +5,15 @@ import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
 import { jobCreateSchema } from '@/lib/validation';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canEditJob, canDeleteJob } from '@/lib/permissions';
 
 interface Props { visible: boolean; onClose: () => void; job: any; onSaved: () => void; }
 
 export function JobEditModal({ visible, onClose, job, onSaved }: Props) {
+  const { role } = useCurrentUser();
+  const canEdit = canEditJob(role);
+  const canDelete = canDeleteJob(role);
   const [title, setTitle] = React.useState(job?.title ?? '');
   const [customerName, setCustomerName] = React.useState(job?.customer_name ?? '');
   const [phone, setPhone] = React.useState(job?.customer_phone ?? '');
@@ -25,6 +30,7 @@ export function JobEditModal({ visible, onClose, job, onSaved }: Props) {
   }, [job]);
 
   async function handleSave() {
+    if (!canEdit) { Alert.alert('Permission denied', `Role ${role} cannot edit jobs`); return; }
     const parsed = jobCreateSchema.safeParse({ title, customerName, customerPhone: phone, address, notes: job?.notes ?? '' });
     if (!parsed.success) { Alert.alert('Validation', parsed.error.issues.map(i=>i.message).join('\n')); return; }
     setSaving(true);
@@ -43,6 +49,7 @@ export function JobEditModal({ visible, onClose, job, onSaved }: Props) {
   }
 
   async function handleDelete() {
+    if (!canDelete) { Alert.alert('Permission denied', `Role ${role} cannot delete — owner/admin only`); return; }
     Alert.alert('Delete job?', 'This will soft-delete locally and sync when online', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -73,9 +80,10 @@ export function JobEditModal({ visible, onClose, job, onSaved }: Props) {
           <TextInput value={phone} onChangeText={setPhone} style={styles.input} keyboardType="phone-pad" placeholderTextColor="#94A3B8" />
           <Text style={styles.label}>Address *</Text>
           <TextInput value={address} onChangeText={setAddress} style={[styles.input, { minHeight: 56 }]} multiline placeholderTextColor="#94A3B8" />
+          <Text style={{ color: '#64748B', fontSize: 11 }}>Role: {role ?? 'unknown'} {canEdit ? '• can edit' : '• read-only'} {canDelete ? '• can delete' : ''}</Text>
           <View style={{ height: 12 }} />
-          <Button title={saving ? 'Saving…' : 'Save (Offline)'} onPress={handleSave} loading={saving} />
-          <Button title="Delete Job" variant="ghost" onPress={handleDelete} />
+          <Button title={saving ? 'Saving…' : 'Save (Offline)'} onPress={handleSave} loading={saving} disabled={!canEdit} />
+          <Button title={canDelete ? 'Delete Job' : 'Delete (owner/admin only)'} variant="ghost" onPress={handleDelete} disabled={!canDelete} />
         </View>
       </View>
     </Modal>

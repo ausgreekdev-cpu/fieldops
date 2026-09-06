@@ -5,10 +5,13 @@ import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
 import { inviteSchema } from '@/lib/validation';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canInvite } from '@/lib/permissions';
 
 interface Member { id: string; display_name: string | null; phone: string | null; role: string; }
 
 export default function TeamScreen() {
+  const { role: myRole, companyId: myCompanyId } = useCurrentUser();
   const [members, setMembers] = React.useState<Member[]>([]);
   const [invitePhone, setInvitePhone] = React.useState('');
   const [inviteName, setInviteName] = React.useState('');
@@ -53,6 +56,7 @@ export default function TeamScreen() {
   React.useEffect(() => { load(); }, [load]);
 
   async function handleInvite() {
+    if (!canInvite(myRole, role)) { Alert.alert('Permission denied', `Your role ${myRole ?? 'unknown'} cannot invite as ${role} — owner only for admin invites`); return; }
     const parsed = inviteSchema.safeParse({ phone: invitePhone, displayName: inviteName, role });
     if (!parsed.success) { Alert.alert('Validation', parsed.error.issues.map(i=>i.message).join('\n')); return; }
     if (!companyId) { Alert.alert('No company'); return; }
@@ -91,7 +95,7 @@ export default function TeamScreen() {
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Text style={styles.title}>Team</Text>
-        <Text style={styles.sub}>Invite technicians — they claim via phone OTP. Offline-first.</Text>
+        <Text style={styles.sub}>Invite — claim via phone OTP. Your role: {myRole ?? '…'} {myRole ? (canInvite(myRole,'admin') ? '• can invite admin+tech' : canInvite(myRole,'technician') ? '• can invite tech' : '• read-only') : ''}. Offline-first.</Text>
       </View>
 
       <View style={styles.inviteCard}>
@@ -101,11 +105,16 @@ export default function TeamScreen() {
         <TextInput value={inviteName} onChangeText={setInviteName} placeholder="Alex — apprentice" style={styles.input} placeholderTextColor="#94A3B8" />
         <Text style={styles.label}>Role</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(['technician','admin'] as const).map(r => (
-            <Pressable key={r} onPress={()=>setRole(r)} style={[styles.roleChip, role===r && styles.roleChipActive]}><Text style={[styles.roleText, role===r && styles.roleTextActive]}>{r}</Text></Pressable>
-          ))}
+          {(['technician','admin'] as const).map(r => {
+            const disabled = !canInvite(myRole, r);
+            return (
+              <Pressable key={r} onPress={()=> !disabled && setRole(r)} style={[styles.roleChip, role===r && styles.roleChipActive, disabled && { opacity: 0.4 }]}>
+                <Text style={[styles.roleText, role===r && styles.roleTextActive]}>{r}{disabled ? ' 🔒' : ''}</Text>
+              </Pressable>
+            );
+          })}
         </View>
-        <Button title={saving ? 'Inviting…' : 'Invite (Offline)'} onPress={handleInvite} loading={saving} />
+        <Button title={saving ? 'Inviting…' : 'Invite (Offline)'} onPress={handleInvite} loading={saving} disabled={!canInvite(myRole, role)} />
       </View>
 
       <FlatList

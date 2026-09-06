@@ -10,12 +10,16 @@ import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
 import { checkEntitlement } from '@/lib/revenuecat';
 import { companySchema } from '@/lib/validation';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canManageCompany } from '@/lib/permissions';
 
 export default function SettingsScreen() {
   const [company, setCompany] = React.useState<any>(null);
   const [name, setName] = React.useState('');
   const [abn, setAbn] = React.useState('');
   const [logoUri, setLogoUri] = React.useState<string | null>(null);
+  const { role } = useCurrentUser();
+  const canManage = canManageCompany(role);
   const [saving, setSaving] = React.useState(false);
   const [showPaywall, setShowPaywall] = React.useState(false);
   const [isPro, setIsPro] = React.useState(false);
@@ -64,6 +68,7 @@ export default function SettingsScreen() {
   }
 
   async function handleSave() {
+    if (!canManage) { Alert.alert('Permission denied', `Role ${role} cannot manage company — owner/admin only`); return; }
     if (!company) { Alert.alert('No company'); return; }
     const parsed = companySchema.safeParse({ name, abn });
     if (!parsed.success) { Alert.alert('Validation', parsed.error.issues.map(i=>i.message).join('\n')); return; }
@@ -100,8 +105,11 @@ export default function SettingsScreen() {
         <Text style={styles.hint}>Logo, ABN, tax — branded PDFs update instantly. Offline-first.</Text>
 
         <View style={styles.card}>
-          <Text style={styles.label}>Logo</Text>
-          <Pressable onPress={pickLogo} style={styles.logoBox}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={styles.label}>Logo</Text>
+            <Text style={{ color: '#64748B', fontSize: 11 }}>Role: {role ?? '…'} {canManage ? '• can manage' : '• view-only'}</Text>
+          </View>
+          <Pressable onPress={canManage ? pickLogo : () => Alert.alert('Read-only', 'Only owner/admin can change logo')} style={styles.logoBox}>
             {logoUri ? <Image source={{ uri: logoUri }} style={styles.logo} /> : <Text style={styles.logoPlaceholder}>Tap to pick logo</Text>}
           </Pressable>
           <Text style={styles.meta}>JPG/PNG, square recommended. Stored in company-logos bucket ({company?.id?.slice(0,8) ?? '…'}/*)</Text>
@@ -113,7 +121,7 @@ export default function SettingsScreen() {
           <Text style={styles.label}>ABN / Tax ID</Text>
           <TextInput value={abn} onChangeText={setAbn} style={styles.input} placeholder="12 345 678 901" keyboardType="number-pad" placeholderTextColor="#94A3B8" />
           <View style={{ height: 8 }} />
-          <Button title={saving ? 'Saving…' : 'Save (Offline)'} onPress={handleSave} loading={saving} />
+          <Button title={saving ? 'Saving…' : 'Save (Offline)'} onPress={handleSave} loading={saving} disabled={!canManage} />
         </View>
 
         <View style={styles.card}>
