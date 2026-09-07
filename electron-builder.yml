@@ -1,0 +1,50 @@
+appId: com.fieldops.app
+productName: FieldOps
+copyright: Copyright © 2026 FieldOps
+directories:
+  buildResources: assets
+  output: dist-desktop
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+  - "!**/*.ts"
+  - "!**/__tests__/**"
+  - "!supabase/**"
+  - "!linux/**"
+  - "!store/**"
+  - "!dist-linux/**"
+  - "!node_modules/**/.cache/**"
+extraMetadata:
+  main: electron/main.js
+win:
+  icon: assets/icon.png
+  target:
+    - target: portable
+      arch: [x64]
+    - target: nsis
+      arch: [x64]
+  publisherName: FieldOps
+  verifyUpdateCodeSignature: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  perMachine: false
+linux:
+  icon: assets/icon.png
+  category: Office
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+  maintainer: FieldOps <fieldops@example.com>
+  description: FieldOps — offline-first field worker SaaS (Expo web + Supabase)
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.business
