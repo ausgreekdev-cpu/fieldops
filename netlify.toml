@@ -1,0 +1,38 @@
+[build]
+  command = "npm ci && npm run build:web"
+  publish = "dist"
+  ignore = "git diff --quiet HEAD^ HEAD -- . 2>/dev/null || true"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--ignore-scripts=false"
+  EXPO_NO_TELEMETRY = "1"
+
+# SPA fallback for expo-router (all routes → index.html)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers — caching + security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Functions (optional — proxy Supabase Edge Functions if needed)
+# [functions]
+#   directory = "netlify/functions"
+
+[context.production.environment]
+  NODE_ENV = "production"
+
+[context.deploy-preview.environment]
+  NODE_ENV = "development"

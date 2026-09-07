@@ -20,7 +20,10 @@
         "NSCameraUsageDescription": "Capture job photos and receipts on site",
         "NSMicrophoneUsageDescription": "Dictate work logs hands-free",
         "NSLocationWhenInUseUsageDescription": "Navigate to job sites",
-        "UIBackgroundModes": ["fetch", "remote-notification"]
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -35,7 +38,9 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "blockedPermissions": ["android.permission.ACCESS_BACKGROUND_LOCATION"],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ],
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.fieldops.app"
     },
     "web": {
