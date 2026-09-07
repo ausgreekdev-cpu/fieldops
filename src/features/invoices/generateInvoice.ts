@@ -135,17 +135,13 @@ export async function shareViaWhatsApp(phone: string | undefined, message: strin
   Linking.openURL(url);
 }
 
-export async function createStripePaymentLinkStub(total: number, invoiceNumber: string): Promise<string> {
-  // Real implementation: call supabase edge function create-payment-link which does stripe.paymentLinks.create
-  // Offline stub returns a placeholder that resolves when online via sync
-  // If supabase is configured, try live call
+export async function createStripePaymentLinkStub(total: number, invoiceNumber: string, invoiceId?: string): Promise<string> {
   try {
     const supabase = getSupabase();
     const { data, error } = await supabase.functions.invoke('create-payment-link', {
-      body: { amount: Math.round(total * 100), currency: 'aud', invoice_number: invoiceNumber },
+      body: { amount: Math.round(total * 100), currency: 'aud', invoice_number: invoiceNumber, invoice_id: invoiceId },
     });
     if (!error && (data as any)?.url) return (data as any).url;
   } catch {}
-  // Fallback stub — store locally, will be replaced on sync
   return `https://pay.fieldops.example/invoice/${invoiceNumber}?amount=${total}`;
 }

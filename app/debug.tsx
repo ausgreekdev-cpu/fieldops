@@ -6,17 +6,28 @@ import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
 import { useSyncStatus } from '@/sync/useSyncStatus';
+import { getBackgroundSyncStatus } from '@/lib/backgroundSync';
+import { getAllScheduledCount, getPermissionStatus, scheduleWeeklySummaryDebug, notifyWeeklySummaryNow } from '@/lib/notifications';
+import { addBreadcrumb } from '@/lib/monitoring';
+import * as Notifications from 'expo-notifications';
 
 export default function DebugScreen() {
   const { isOnline, isSyncing, pendingCount, retryNow } = useSyncStatus();
   const [outbox, setOutbox] = React.useState<any[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [bgStatus, setBgStatus] = React.useState<any>(null);
+  const [schedCount, setSchedCount] = React.useState(0);
+  const [perm, setPerm] = React.useState<string>('unknown');
 
   const load = React.useCallback(async () => {
     try {
       const db = getRawDb();
       const rows = await db.getAllAsync(`SELECT id, table_name, record_id, operation, status, attempts, next_retry_at, error, created_at FROM outbox ORDER BY created_at DESC LIMIT 50`);
       setOutbox(rows as any[]);
+      try { setBgStatus(await getBackgroundSyncStatus()); } catch {}
+      try { setSchedCount(await getAllScheduledCount()); } catch {}
+      try { setPerm(await getPermissionStatus()); } catch {}
+      addBreadcrumb('debug load', { pending: rows.length });
     } catch (e) { console.warn(e); }
   }, []);
 
@@ -60,6 +71,18 @@ export default function DebugScreen() {
             <Text style={styles.rowAttempts}>{r.attempts}</Text>
           </Pressable>
         ))}
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Background & Notifications</Text>
+          <Text style={styles.bullet}>BG Fetch status: {bgStatus ? String(bgStatus.status) : '…'} • registered: {bgStatus?.isRegistered ? 'yes ✓' : 'no'} • 15m min (iOS throttles)</Text>
+          <Text style={styles.bullet}>Scheduled notifications: {schedCount} • permission: {perm}</Text>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <Button title="Weekly Now" size="sm" onPress={async () => { await notifyWeeklySummaryNow(999, 3); addBreadcrumb('weekly now fired'); Alert.alert('Fired ✓'); }} />
+            <Button title="Schedule 60s debug" size="sm" variant="secondary" onPress={async () => { await scheduleWeeklySummaryDebug(555, 2); setSchedCount(await getAllScheduledCount()); Alert.alert('Scheduled ✓ 60s'); }} />
+            <Button title="Cancel All" size="sm" variant="ghost" onPress={async () => { await Notifications.cancelAllScheduledNotificationsAsync(); setSchedCount(0); Alert.alert('Cancelled'); }} />
+          </View>
+          <Text style={styles.hint}>Weekly uses identifier weekly-summary + Mon 9am channelId; debug uses cheap 60s for QA. Expo Go: BackgroundFetch unreliable — use Dev Client.</Text>
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>How to test offline</Text>

@@ -32,12 +32,14 @@ async function migrateIfNeeded(db: SQLite.SQLiteDatabase) {
     CREATE TABLE IF NOT EXISTS job_signatures (id TEXT PRIMARY KEY NOT NULL, job_id TEXT NOT NULL, company_id TEXT NOT NULL, storage_path TEXT NOT NULL, signed_by_name TEXT NOT NULL, signed_at TEXT NOT NULL, synced INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS compliance_checklists (id TEXT PRIMARY KEY NOT NULL, company_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, fields TEXT DEFAULT '[]', is_active INTEGER DEFAULT 1, synced INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS checklist_submissions (id TEXT PRIMARY KEY NOT NULL, job_id TEXT NOT NULL, checklist_id TEXT NOT NULL, company_id TEXT NOT NULL, responses TEXT DEFAULT '{}', photo_proofs TEXT, signed_by TEXT, signed_at TEXT, result TEXT, created_at TEXT NOT NULL, synced INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY NOT NULL, job_id TEXT NOT NULL, company_id TEXT NOT NULL, invoice_number TEXT NOT NULL, line_items TEXT DEFAULT '[]', subtotal REAL DEFAULT 0, tax REAL DEFAULT 0, total REAL DEFAULT 0, status TEXT DEFAULT 'draft', pdf_path TEXT, payment_link TEXT, created_at TEXT NOT NULL, synced INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY NOT NULL, job_id TEXT NOT NULL, company_id TEXT NOT NULL, invoice_number TEXT NOT NULL, line_items TEXT DEFAULT '[]', subtotal REAL DEFAULT 0, tax REAL DEFAULT 0, total REAL DEFAULT 0, status TEXT DEFAULT 'draft', pdf_path TEXT, payment_link TEXT, paid_at TEXT, created_at TEXT NOT NULL, synced INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY NOT NULL, table_name TEXT NOT NULL, record_id TEXT NOT NULL, operation TEXT NOT NULL, payload TEXT NOT NULL, attempts INTEGER DEFAULT 0, next_retry_at TEXT, status TEXT DEFAULT 'pending', error TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS idx_jobs_company_status ON jobs(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status, next_retry_at);
   `);
+  // lightweight migration for existing installs: add paid_at if missing
+  try { await db.execAsync(`ALTER TABLE invoices ADD COLUMN paid_at TEXT`); } catch {}
 }
 
 // For tests — in-memory

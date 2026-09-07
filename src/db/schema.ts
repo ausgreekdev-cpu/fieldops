@@ -114,6 +114,7 @@ export const invoices = sqliteTable('invoices', {
   status: text('status').default('draft'),
   pdfPath: text('pdf_path'),
   paymentLink: text('payment_link'),
+  paidAt: text('paid_at'),
   createdAt: text('created_at').notNull(),
   synced: integer('synced', { mode: 'boolean' }).default(false),
 });

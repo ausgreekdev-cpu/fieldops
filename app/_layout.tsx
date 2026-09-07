@@ -5,27 +5,46 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { getDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
+import * as Notifications from 'expo-notifications';
+import { router } from 'expo-router';
 import { requestNotificationPermission } from '@/lib/notifications';
-import { registerBackgroundSync } from '@/lib/backgroundSync';
+import { registerBackgroundSync, isBgSyncEnabled } from '@/lib/backgroundSync';
 import { SyncManager } from '@/sync/SyncManager';
-import { initMonitoring } from '@/lib/monitoring';
+import { initMonitoring, captureMessage, addBreadcrumb } from '@/lib/monitoring';
 
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
   React.useEffect(() => {
-    // Init DB + Supabase listener early
     getDb().catch(console.error);
     const supabase = getSupabase();
-    supabase.auth.onAuthStateChange((_event, _session) => {
-      // could trigger SyncManager pull here
-    });
-    // Monitoring (no-op without DSN)
+    supabase.auth.onAuthStateChange((_event, _session) => {});
     initMonitoring(process.env.EXPO_PUBLIC_SENTRY_DSN);
-    // Init sync + notifications + background fetch (all best-effort)
     SyncManager.getInstance(supabase).init().catch(console.error);
-    requestNotificationPermission().catch(console.error);
-    registerBackgroundSync().catch(console.error);
+
+    // Notifications + bg sync (only if granted && enabled)
+    (async () => {
+      try {
+        const granted = await requestNotificationPermission();
+        if (!granted) {
+          captureMessage('notifications denied', 'warning');
+          addBreadcrumb('notifications denied');
+          return;
+        }
+        const bgEnabled = await isBgSyncEnabled();
+        if (bgEnabled) await registerBackgroundSync();
+        addBreadcrumb('notifications granted, bgSync check', { granted, bgEnabled });
+      } catch (e) { console.warn(e); }
+    })();
+
+    // Tap handling -> analytics/debug
+    const sub = Notifications.addNotificationResponseReceivedListener(res => {
+      const title = res.notification.request.content.title ?? '';
+      addBreadcrumb('notification tap', { title });
+      if (title.includes('FieldOps') || title.includes('Weekly')) router.push('/analytics' as any);
+      else if (title.includes('Sync')) router.push('/debug' as any);
+    });
+    return () => sub.remove();
   }, []);
 
   return (

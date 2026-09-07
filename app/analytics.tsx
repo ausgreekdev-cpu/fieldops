@@ -1,12 +1,12 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { useStats } from '@/features/analytics/useStats';
 import { useRevenueTrend } from '@/features/analytics/useRevenueTrend';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { exportJobsCsv, exportInvoicesCsv, exportRevenueCsv } from '@/lib/csv';
-import { notifyWeeklySummaryNow, scheduleWeeklySummary } from '@/lib/notifications';
+import { notifyWeeklySummaryNow, scheduleWeeklySummary, getPermissionStatus } from '@/lib/notifications';
 import { getRawDb } from '@/db/client';
 
 export default function AnalyticsScreen() {
@@ -30,12 +30,18 @@ export default function AnalyticsScreen() {
   async function handleWeeklyNow() {
     const weekRevenue = points[points.length - 1]?.revenue ?? 0;
     const weekJobs = points[points.length - 1]?.count ?? 0;
+    const perm = await getPermissionStatus();
+    if (perm !== 'granted') { Alert.alert('Permission needed', 'Enable notifications in Settings'); return; }
     await notifyWeeklySummaryNow(weekRevenue, weekJobs);
+    Alert.alert('Fired ✓', 'Check notification tray');
   }
   async function handleScheduleWeekly() {
     const totalRev = stats?.totalRevenue ?? 0;
     const totalJobs = stats?.totalJobs ?? 0;
+    const perm = await getPermissionStatus();
+    if (perm !== 'granted') { Alert.alert('Permission needed', 'Enable in Settings → Notifications'); return; }
     await scheduleWeeklySummary(totalRev, totalJobs);
+    Alert.alert('Scheduled ✓', 'Mondays 9am (weekly-summary)');
   }
 
   return (

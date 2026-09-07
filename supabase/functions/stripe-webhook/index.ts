@@ -2,8 +2,7 @@
 import { corsHeaders } from '../_shared/cors.ts';
 import { getAdminClient } from '../_shared/supabaseAdmin.ts';
 
-// Stripe webhook for team tier management + invoice paid sync
-// Verify via STRIPE_WEBHOOK_SECRET (stripe.webhooks.constructEvent equivalent manual HMAC)
+// Stripe webhook — hardened HMAC, fail-closed, multi-v1, timestamp tolerance, idempotency
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -13,14 +12,28 @@ Deno.serve(async (req: Request) => {
     const secret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
     const rawBody = await req.text();
 
-    // Optional signature verification — if secret configured, verify HMAC SHA256
-    if (secret && sig) {
+    // Fail-closed: if secret is configured, signature is required and must verify
+    if (secret) {
+      if (!sig) return new Response(JSON.stringify({ error: 'Missing stripe-signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       const verified = await verifyStripeSignature(rawBody, sig, secret);
       if (!verified) return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    } else {
+      console.warn('[stripe-webhook] STRIPE_WEBHOOK_SECRET not set — skipping verification (dev only)');
     }
 
     const event = JSON.parse(rawBody) as any;
     const admin = getAdminClient();
+
+    // Idempotency: deduplicate by event.id via sync_logs (stripe_events)
+    const eventId = event.id as string | undefined;
+    if (eventId) {
+      const { data: existing } = await admin.from('sync_logs').select('id').eq('record_id', eventId).eq('table_name', 'stripe_events').limit(1);
+      if (existing && existing.length > 0) {
+        return new Response(JSON.stringify({ received: true, deduped: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      // log event id early to claim (best-effort)
+      try { await admin.from('sync_logs').insert({ table_name: 'stripe_events', record_id: eventId, operation: 'insert', payload: { type: event.type }, status: 'synced' }); } catch {}
+    }
 
     switch (event.type) {
       case 'checkout.session.completed':
@@ -36,11 +49,9 @@ Deno.serve(async (req: Request) => {
       case 'customer.subscription.updated':
       case 'customer.subscription.created': {
         const customerId = event.data?.object?.customer as string;
-        const status = event.data?.object?.status as string; // active, past_due
+        const status = event.data?.object?.status as string;
         const tier = status === 'active' ? 'team' : 'pro';
-        if (customerId) {
-          await admin.from('companies').update({ subscription_tier: tier }).eq('stripe_customer_id', customerId);
-        }
+        if (customerId) await admin.from('companies').update({ subscription_tier: tier }).eq('stripe_customer_id', customerId);
         break;
       }
       case 'customer.subscription.deleted': {
@@ -49,7 +60,6 @@ Deno.serve(async (req: Request) => {
         break;
       }
       default:
-        // log unhandled
         console.log('[stripe-webhook] unhandled', event.type);
     }
 
@@ -60,17 +70,34 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function verifyStripeSignature(payload: string, signature: string, secret: string): Promise<boolean> {
+async function verifyStripeSignature(payload: string, sigHeader: string, secret: string): Promise<boolean> {
   try {
-    // Stripe signature: t=timestamp,v1=hmac
-    const parts = Object.fromEntries(signature.split(',').map(p => p.split('=') as [string, string]));
-    const t = parts['t'];
-    const v1 = parts['v1'];
-    if (!t || !v1) return false;
+    // Stripe sends: t=timestamp,v1=hex,v1=hex (multiple for rotation) — collect all v1
+    const parts = sigHeader.split(',').map(p => p.trim());
+    const tPart = parts.find(p => p.startsWith('t='));
+    const v1s = parts.filter(p => p.startsWith('v1=')).map(p => p.slice(3));
+    if (!tPart || v1s.length === 0) return false;
+    const t = tPart.slice(2);
+    const ts = Number(t);
+    if (!Number.isFinite(ts)) return false;
+    // 5 minute tolerance (replay protection)
+    const now = Math.floor(Date.now() / 1000);
+    if (Math.abs(now - ts) > 300) return false;
+
     const signedPayload = `${t}.${payload}`;
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
     const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
-    return hex === v1;
+
+    // constant-time compare for each v1 (avoid timing leak)
+    const hexBytes = new TextEncoder().encode(hex);
+    for (const v1 of v1s) {
+      const v1Bytes = new TextEncoder().encode(v1);
+      if (v1Bytes.length !== hexBytes.length) continue;
+      let diff = 0;
+      for (let i = 0; i < hexBytes.length; i++) diff |= hexBytes[i] ^ v1Bytes[i];
+      if (diff === 0) return true;
+    }
+    return false;
   } catch { return false; }
 }

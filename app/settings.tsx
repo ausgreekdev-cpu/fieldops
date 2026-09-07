@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Image, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Image, Pressable, Switch } from 'react-native';
 import { Stack, router } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Button } from '@/components/ui/Button';
@@ -13,6 +14,8 @@ import { companySchema } from '@/lib/validation';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canManageCompany } from '@/lib/permissions';
 import { getCacheSize, evictLRUIfNeeded } from '@/lib/photoCache';
+import { getPermissionStatus, openNotificationSettings, scheduleWeeklySummary, cancelWeeklySummary, getWeeklyStatus, getAllScheduledCount, scheduleWeeklySummaryDebug } from '@/lib/notifications';
+import { getBackgroundSyncStatus, registerBackgroundSync, unregisterBackgroundSync } from '@/lib/backgroundSync';
 
 export default function SettingsScreen() {
   const [company, setCompany] = React.useState<any>(null);
@@ -23,6 +26,11 @@ export default function SettingsScreen() {
   const canManage = canManageCompany(role);
   const [cacheSize, setCacheSize] = React.useState<number | null>(null);
   const [cacheBusy, setCacheBusy] = React.useState(false);
+  const [permStatus, setPermStatus] = React.useState<string>('unknown');
+  const [weeklyEnabled, setWeeklyEnabled] = React.useState(false);
+  const [weeklyScheduled, setWeeklyScheduled] = React.useState(false);
+  const [bgStatus, setBgStatus] = React.useState<any>(null);
+  const [scheduledCount, setScheduledCount] = React.useState(0);
   const [saving, setSaving] = React.useState(false);
   const [showPaywall, setShowPaywall] = React.useState(false);
   const [isPro, setIsPro] = React.useState(false);
@@ -60,6 +68,16 @@ export default function SettingsScreen() {
   React.useEffect(() => { load(); }, [load]);
   React.useEffect(() => {
     getCacheSize().then(b => setCacheSize(b)).catch(()=>{});
+    (async () => {
+      try {
+        setPermStatus(await getPermissionStatus());
+        const w = await getWeeklyStatus();
+        setWeeklyEnabled(w.enabled);
+        setWeeklyScheduled(w.scheduled);
+        setBgStatus(await getBackgroundSyncStatus());
+        setScheduledCount(await getAllScheduledCount());
+      } catch {}
+    })();
   }, []);
 
   async function handleClearCache() {
@@ -77,6 +95,33 @@ export default function SettingsScreen() {
   async function handleRefreshCache() {
     const size = await getCacheSize();
     setCacheSize(size);
+  }
+
+  async function handleWeeklyToggle(v: boolean) {
+    if (permStatus !== 'granted') { Alert.alert('Permission needed', 'Enable notifications in system settings first', [{ text: 'Open Settings', onPress: () => openNotificationSettings() }, { text: 'Cancel', style: 'cancel' }]); return; }
+    if (v) {
+      await scheduleWeeklySummary(0, 0);
+      Alert.alert('Weekly summary scheduled ✓', 'Mondays 9am (local)');
+    } else {
+      await cancelWeeklySummary();
+    }
+    const w = await getWeeklyStatus();
+    setWeeklyEnabled(w.enabled);
+    setWeeklyScheduled(w.scheduled);
+    setScheduledCount(await getAllScheduledCount());
+  }
+
+  async function handleBgToggle(v: boolean) {
+    if (v) await registerBackgroundSync();
+    else await unregisterBackgroundSync();
+    setBgStatus(await getBackgroundSyncStatus());
+  }
+
+  async function handleDebugFireNow() {
+    const { scheduleWeeklySummaryDebug } = await import('@/lib/notifications');
+    await scheduleWeeklySummaryDebug(1234, 5);
+    Alert.alert('Debug scheduled ✓', 'Weekly debug fires in 60s');
+    setScheduledCount(await getAllScheduledCount());
   }
 
   async function pickLogo() {
@@ -164,6 +209,38 @@ export default function SettingsScreen() {
             <Button title={cacheBusy ? 'Cleaning…' : 'Run LRU Eviction'} size="sm" variant="secondary" onPress={handleClearCache} loading={cacheBusy} />
           </View>
           <Text style={styles.meta}>Auto-evict on gallery load when over cap. Photos pending upload are never deleted.</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Notifications</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: '#334155', fontSize: 12 }}>Permission: {permStatus} {permStatus==='denied' ? '• tap to open settings' : ''}</Text>
+            {permStatus==='denied' ? <Button title="Open Settings" size="sm" variant="secondary" onPress={() => openNotificationSettings()} /> : null}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <View>
+              <Text style={{ fontWeight: '700', color: '#0F172A', fontSize: 12 }}>Weekly Summary (Mon 9am)</Text>
+              <Text style={styles.meta}>{weeklyScheduled ? 'Scheduled ✓' : 'Not scheduled'} • {scheduledCount} total scheduled</Text>
+            </View>
+            <Switch value={weeklyEnabled} onValueChange={handleWeeklyToggle} trackColor={{ false: '#CBD5E1', true: '#0F172A' }} />
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={{ fontWeight: '700', color: '#0F172A', fontSize: 12 }}>Background Sync 15m</Text>
+              <Text style={styles.meta}>{bgStatus?.isRegistered ? 'Registered ✓' : 'Not registered'} • status {bgStatus?.status ?? '?'}</Text>
+            </View>
+            <Switch value={!!bgStatus?.isRegistered} onValueChange={handleBgToggle} trackColor={{ false: '#CBD5E1', true: '#0F172A' }} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+            <Button title="Weekly Now" size="sm" variant="secondary" onPress={async () => {
+              const { notifyWeeklySummaryNow } = await import('@/lib/notifications');
+              await notifyWeeklySummaryNow(0, 0);
+              Alert.alert('Fired ✓', 'Check notification tray');
+            }} />
+            <Button title="Debug 60s" size="sm" variant="ghost" onPress={handleDebugFireNow} />
+            <Button title="Sync Debug →" size="sm" variant="secondary" onPress={() => router.push('/debug' as any)} />
+          </View>
+          <Text style={styles.meta}>Weekly uses Monday 9am trigger + fieldops-sync channel; bg sync 15m is iOS minimum not guarantee. Requires Dev Client for BackgroundFetch (Expo Go unreliable).</Text>
         </View>
 
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>

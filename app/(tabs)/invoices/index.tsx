@@ -56,8 +56,8 @@ export default function InvoicesScreen() {
     }
     setBusyId(item.id);
     try {
-      const url = await createStripePaymentLinkStub(item.total, item.invoice_number);
-      // Save locally + queue update
+      const url = await createStripePaymentLinkStub(item.total, item.invoice_number, item.id);
+      // Save locally + queue update (with invoice_id for webhook correlation)
       const db = getRawDb();
       await db.runAsync(`UPDATE invoices SET payment_link=?, synced=0 WHERE id=?`, [url, item.id]);
       const { SyncManager } = await import('@/sync/SyncManager');
