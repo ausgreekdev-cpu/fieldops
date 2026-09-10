@@ -4,7 +4,6 @@ import { Platform, Alert, Linking } from 'react-native';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
-import { pdf } from '@react-pdf/renderer';
 import * as React from 'react';
 import { InvoicePdf } from './pdfTemplate';
 
@@ -51,18 +50,17 @@ export async function generateInvoiceLocally({ jobId, companyId, taxRate = 0.1 }
   const id = uuid();
   const now = new Date().toISOString();
 
-  // Generate PDF via @react-pdf/renderer (works on-device)
+  // Generate PDF — native uses @react-pdf/renderer, web uses placeholder (stubbed pdfkit)
   const doc = React.createElement(InvoicePdf, {
     company: { name: company?.name ?? 'FieldOps Company', abn: company?.abn ?? undefined, address: company?.address ?? undefined },
     invoice: { invoice_number: invoiceNumber, created_at: now, line_items: lineItems, subtotal, tax, total },
     customer: { name: job.customer_name, address: job.address },
   } as any);
 
-  // pdf().toBlob() is web-only; in Expo we use toString or render to file via FileSystem
-  // Use pdf().toBlob approach with polyfill: generate via pdf().toString() is not ideal, so we use expo-print-like fallback:
-  // For offline MVP we generate a simple HTML and use FileSystem, but use @react-pdf's pdf().toBuffer if available
   let pdfUri = '';
   try {
+    if (Platform.OS === 'web') throw new Error('web uses placeholder PDF (pdfkit stubbed)');
+    const { pdf } = await import('@react-pdf/renderer');
     // @ts-ignore — pdf instance has toBuffer in node/expo
     const instance = pdf(doc as any);
     const buffer: Uint8Array | Buffer | Blob = await (instance as any).toBuffer();
