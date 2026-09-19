@@ -4,7 +4,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { getDb } from '@/db/client';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabase, setSupabaseConfigOverride } from '@/lib/supabase';
+import { loadSupabaseConfig, isPlaceholderUrl } from '@/lib/supabaseConfig';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { requestNotificationPermission } from '@/lib/notifications';
@@ -15,7 +16,25 @@ import { initMonitoring, captureMessage, addBreadcrumb } from '@/lib/monitoring'
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
+  const [needsConnect, setNeedsConnect] = React.useState(false);
+  const [ready, setReady] = React.useState(false);
+
   React.useEffect(() => {
+    (async () => {
+      // First-run: if user has saved config, apply it; else if env is placeholder, route to Connect.
+      try {
+        const cfg = await loadSupabaseConfig();
+        if (cfg) {
+          setSupabaseConfigOverride(cfg.url, cfg.anonKey);
+          setNeedsConnect(false);
+        } else {
+          const bakedUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string | undefined;
+          setNeedsConnect(!bakedUrl || isPlaceholderUrl(bakedUrl));
+        }
+      } catch { setNeedsConnect(true); }
+      setReady(true);
+    })();
+
     getDb().catch(console.error);
     const supabase = getSupabase();
     supabase.auth.onAuthStateChange((_event, _session) => {});
@@ -47,11 +66,18 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  React.useEffect(() => {
+    if (ready && needsConnect) {
+      router.replace('/connect' as any);
+    }
+  }, [ready, needsConnect]);
+
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <OfflineBanner />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F8FAFC' } }}>
+          <Stack.Screen name="connect" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="jobs/[id]" options={{ presentation: 'card', headerShown: true, title: 'Job Detail' }} />

@@ -26,14 +26,22 @@ const ExpoSecureStoreAdapter = {
 };
 
 let client: SupabaseClient | null = null;
+let configOverride: { url: string; anonKey: string } | null = null;
+
+// Set from first-run wizard; overrides baked env so a prebuilt installer works for anyone.
+export function setSupabaseConfigOverride(url: string, anonKey: string) {
+  configOverride = { url, anonKey };
+  client = null; // rebuild client on next getSupabase()
+}
 
 export function getSupabase(): SupabaseClient {
   if (client) return client;
-  const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    // Return a dummy client that will throw on use — allows typecheck without env
-    console.warn('[supabase] Missing EXPO_PUBLIC_SUPABASE_URL / ANON_KEY — using placeholder');
+  // Prefer user-saved config (first-run wizard), then baked env, then placeholder.
+  const cfg = configOverride;
+  const url = cfg?.url || process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const anonKey = cfg?.anonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey || url.includes('placeholder') || url.includes('YOUR_PROJECT')) {
+    console.warn('[supabase] No real config — using placeholder (run first-run Connect screen)');
     return createClient('https://placeholder.supabase.co', 'placeholder', {
       auth: { persistSession: false },
     });
