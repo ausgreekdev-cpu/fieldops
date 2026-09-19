@@ -19,16 +19,18 @@ extraMetadata:
   main: electron/main.js
 win:
   icon: assets/icon.png
+  artifactName: ${productName}-${version}-${target}.${ext}
   target:
     - target: portable
       arch: [x64]
-      artifactName: ${productName}-${version}-portable.${ext}
     - target: nsis
       arch: [x64]
-      artifactName: ${productName}-Setup-${version}.${ext}
   publisherName: FieldOps
   verifyUpdateCodeSignature: false
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
 nsis:
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
