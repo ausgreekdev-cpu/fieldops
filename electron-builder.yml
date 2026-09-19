@@ -22,8 +22,10 @@ win:
   target:
     - target: portable
       arch: [x64]
+      artifactName: ${productName}-${version}-portable.${ext}
     - target: nsis
       arch: [x64]
+      artifactName: ${productName}-Setup-${version}.${ext}
   publisherName: FieldOps
   verifyUpdateCodeSignature: false
 nsis:

@@ -53,6 +53,6 @@ jobs:
           files: |
             **/FieldOps*.AppImage
             **/*.deb
-            **/*portable.exe
-            **/*Setup*.exe
+            **/*-portable.exe
+            **/*-Setup-*.exe
             **/*.tar.gz
