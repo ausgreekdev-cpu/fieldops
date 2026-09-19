@@ -2,7 +2,7 @@
   "expo": {
     "name": "FieldOps",
     "slug": "fieldops",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -32,7 +32,7 @@
         "backgroundColor": "#0F172A"
       },
       "package": "com.fieldops.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
