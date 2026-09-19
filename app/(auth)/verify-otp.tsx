@@ -5,18 +5,22 @@ import { Button } from '@/components/ui/Button';
 import { getSupabase } from '@/lib/supabase';
 
 export default function VerifyOtpScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const { mode, value } = useLocalSearchParams<{ mode?: string; value?: string }>();
   const [code, setCode] = React.useState('');
   const [loading, setLoading] = React.useState(false);
 
   async function verify() {
-    if (!code || !phone) return;
+    if (!code || !value) { Alert.alert('Missing code'); return; }
     setLoading(true);
     try {
       const supabase = getSupabase();
-      const { error } = await supabase.auth.verifyOtp({ phone: phone as string, token: code, type: 'sms' });
-      if (error) throw error;
-      // Check if onboarding needed
+      if (mode === 'email') {
+        const { error } = await supabase.auth.verifyOtp({ email: value as string, token: code, type: 'email' });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.verifyOtp({ phone: value as string, token: code, type: 'sms' });
+        if (error) throw error;
+      }
       const { data: { user } } = await supabase.auth.getUser();
       const { data: profile } = await supabase.from('users').select('company_id').eq('id', user!.id).single();
       if (!profile?.company_id) router.replace('/(auth)/onboarding');
@@ -29,7 +33,7 @@ export default function VerifyOtpScreen() {
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>Enter code</Text>
-      <Text style={styles.sub}>Sent to {phone}</Text>
+      <Text style={styles.sub}>Sent to {value} {mode === 'email' ? '(check your inbox / spam)' : ''}</Text>
       <TextInput value={code} onChangeText={setCode} placeholder="123456" keyboardType="number-pad" maxLength={6} style={styles.input} placeholderTextColor="#94A3B8" />
       <Button title="Verify & Continue" onPress={verify} loading={loading} />
     </View>
