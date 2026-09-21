@@ -116,9 +116,11 @@ async function stepSupabase() {
     run(`supabase link --project-ref ${projRef}`);
   }
 
-  p('  Step 3: Apply database schema (tables + RLS + storage buckets).');
-  if (await confirm('Run `supabase db push` to deploy the schema to production?')) {
+  p('  Step 3: Apply database schema (tables + RLS + storage buckets + email auth).');
+  if (await confirm('Run `supabase db push` to deploy migrations 001 + 002 to production?')) {
     run('supabase db push');
+    info('Migrations: 001_schema.sql (core) + 002_email_auth.sql (users.email for email login).');
+    info('Email OTP login works out of the box — no SMS/Twilio needed.');
   }
 
   p('  Step 4: Deploy Edge Functions (voice AI, receipt AI, payment links, webhooks).');

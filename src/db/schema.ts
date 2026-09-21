@@ -25,6 +25,7 @@ export const users = sqliteTable('users', {
   role: text('role').default('technician'),
   displayName: text('display_name'),
   phone: text('phone'),
+  email: text('email'),
   avatarUrl: text('avatar_url'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
