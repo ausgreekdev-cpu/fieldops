@@ -17,7 +17,8 @@
 - Edge Functions also validate Whisper transcript length, image size (15MB/10MB caps), and structured JSON schema (`VoiceLogJsonSchema`, `ReceiptJsonSchema`) before DB writes.
 
 ## Checklist
-- [ ] Rotate `sb_publishable_...` that was pasted as AI key in earlier run
+- [x] Verified no secrets committed — `git log -S "sb_publishable"` + grep show only rotation warnings in docs, never the key; `.env`/`supabase/.env.local` gitignored with placeholders only
+- [ ] Rotate `sb_publishable_...` that was pasted as an AI key in an earlier chat if it was a real Supabase anon key (Dashboard → API → Reset)
 - [ ] Enable Supabase email confirmation + SMS OTP rate limiting in Dashboard
 - [ ] Set `STRIPE_WEBHOOK_SECRET` and verify `stripe-signature` on `stripe-webhook`
 - [ ] Set `REVENUECAT_WEBHOOK_SECRET` and use `Authorization: Bearer` on `revenuecat-webhook`

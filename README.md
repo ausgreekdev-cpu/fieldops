@@ -4,14 +4,21 @@ High-performance, mobile-first B2B for field workers, trade techs, site operator
 
 ## Stack
 - **Mobile:** React Native + Expo 52 + Expo Router + TypeScript, `expo-sqlite` + `drizzle-orm` (WAL), Zustand + TanStack Query, `expo-audio` (useAudioRecorder), `react-native-signature-canvas`
-- **Backend:** Supabase (Postgres + Auth phone OTP/magic link + Storage + Edge Functions Deno)
+- **Backend:** Supabase (Postgres + Auth email OTP / phone OTP + Storage + Edge Functions Deno)
 - **AI:** Whisper (`whisper-1`) + GPT-4o-mini / Claude 3.5 via structured JSON schemas (`VoiceLogJsonSchema`, `ReceiptJsonSchema`)
 - **Payments:** RevenueCat (`react-native-purchases`) for App Store/Play + Stripe (payment links + webhooks) for team tier
+- **Desktop:** Electron + electron-builder — Linux AppImage/deb + Windows portable/Setup, click-to-install with app-menu/desktop icon
+
+## Install (no coding — 2 clicks)
+- **Windows:** download `FieldOps-Setup-<ver>.exe` from **Releases** → double-click → desktop icon → click it.
+- **Linux:** `bash <(curl -fsSL https://raw.githubusercontent.com/ausgreekdev-cpu/fieldops/main/scripts/install-fieldops.sh)` (or double-click the `.deb`).
+- **First launch:** app shows **Connect Workspace** — paste your Supabase URL + anon key once (saved on-device, no rebuild), then **email code login** (no SMS/Twilio needed). See `docs/INSTALL.md`.
 
 ## Quick Start
 ```bash
 npm install
 cp .env.example .env  # EXPO_PUBLIC_SUPABASE_URL, ANON_KEY, REVENUECAT keys, AI_PROVIDER=openai
+npm run setup          # interactive no-code wizard: Supabase, Netlify, secrets, Stripe, Play Store
 npm run typecheck && npx tsc --noEmit --skipLibCheck  # functions excluded via tsconfig
 
 # Supabase local (needs Docker + supabase CLI: npm i -g supabase)
