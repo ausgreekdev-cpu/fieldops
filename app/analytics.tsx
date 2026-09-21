@@ -6,6 +6,7 @@ import { useStats } from '@/features/analytics/useStats';
 import { useRevenueTrend } from '@/features/analytics/useRevenueTrend';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { exportJobsCsv, exportInvoicesCsv, exportRevenueCsv } from '@/lib/csv';
+import { exportRevenuePdf } from '@/features/analytics/revenuePdf';
 import { notifyWeeklySummaryNow, scheduleWeeklySummary, getPermissionStatus } from '@/lib/notifications';
 import { getRawDb } from '@/db/client';
 
@@ -27,6 +28,17 @@ export default function AnalyticsScreen() {
     await exportInvoicesCsv(rows);
   }
   async function handleExportRevenue() { await exportRevenueCsv(points); }
+  async function handleExportRevenuePdf() {
+    if (!stats) { Alert.alert('No data', 'Refresh analytics first'); return; }
+    await exportRevenuePdf({
+      companyName: 'FieldOps',
+      generatedAt: new Date().toLocaleString(),
+      stats,
+      weekly: points,
+      paidSum: paidVsDraft?.paidSum ?? 0,
+      draftSum: paidVsDraft?.draftSum ?? 0,
+    });
+  }
   async function handleWeeklyNow() {
     const weekRevenue = points[points.length - 1]?.revenue ?? 0;
     const weekJobs = points[points.length - 1]?.count ?? 0;
@@ -123,11 +135,12 @@ export default function AnalyticsScreen() {
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Export & Notifications</Text>
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <Button title="Revenue PDF" size="sm" onPress={handleExportRevenuePdf} />
                 <Button title="Revenue CSV" size="sm" variant="secondary" onPress={handleExportRevenue} />
                 <Button title="Weekly Notify Now" size="sm" variant="ghost" onPress={handleWeeklyNow} />
                 <Button title="Schedule Weekly" size="sm" variant="ghost" onPress={handleScheduleWeekly} />
               </View>
-              <Text style={styles.hint}>Exports use expo-sharing • notifications need permission (see background sync)</Text>
+              <Text style={styles.hint}>PDF report (A4: jobs, revenue, paid/draft, weekly chart) • CSV • notifications need permission</Text>
             </View>
 
             <View style={styles.card}>
