@@ -31,27 +31,34 @@ export async function createJob(input: {
 export async function updateJobStatus(id: string, status: 'scheduled' | 'in_progress' | 'completed' | 'invoiced') {
   const db = getRawDb();
   const now = new Date().toISOString();
-  await db.runAsync(`UPDATE jobs SET status=?, updated_at=?, synced=0 WHERE id=?`, [status, now, id]);
+  const prev = (await db.getFirstAsync(`SELECT version FROM jobs WHERE id=?`, [id])) as { version: number } | null;
+  await db.runAsync(`UPDATE jobs SET status=?, updated_at=?, synced=0, version=version+1 WHERE id=?`, [status, now, id]);
   const mgr = SyncManager.getInstance(getSupabase());
   const row = (await db.getFirstAsync(`SELECT * FROM jobs WHERE id=?`, [id])) as any;
-  if (row) await mgr.enqueue('jobs', id, 'update', { ...row, status, updated_at: now });
+  if (row) await mgr.enqueue('jobs', id, 'update', { ...row, status, updated_at: now, _expected_version: prev?.version ?? 1 });
 }
 
 export async function appendVoiceLog(jobId: string, voiceOutput: { formatted_notes: string; materials: unknown[]; follow_up_task: unknown }) {
   const db = getRawDb();
-  const row = (await db.getFirstAsync(`SELECT notes, materials FROM jobs WHERE id=?`, [jobId])) as any;
+  const row = (await db.getFirstAsync(`SELECT notes, materials, version FROM jobs WHERE id=?`, [jobId])) as any;
   const existingNotes = row?.notes ?? '';
   const newNotes = existingNotes ? `${existingNotes}\n\n${voiceOutput.formatted_notes}` : voiceOutput.formatted_notes;
   const existingMaterials = row?.materials ? JSON.parse(row.materials) : [];
   const mergedMaterials = [...existingMaterials, ...(voiceOutput.materials as any[])];
   const now = new Date().toISOString();
-  await db.runAsync(`UPDATE jobs SET notes=?, materials=?, updated_at=?, synced=0 WHERE id=?`, [
+  await db.runAsync(`UPDATE jobs SET notes=?, materials=?, updated_at=?, synced=0, version=version+1 WHERE id=?`, [
     newNotes,
     JSON.stringify(mergedMaterials),
     now,
     jobId,
   ]);
   const mgr = SyncManager.getInstance(getSupabase());
-  await mgr.enqueue('jobs', jobId, 'update', { id: jobId, notes: newNotes, materials: mergedMaterials, updated_at: now });
+  await mgr.enqueue('jobs', jobId, 'update', {
+    id: jobId,
+    notes: newNotes,
+    materials: mergedMaterials,
+    updated_at: now,
+    _expected_version: row?.version ?? 1,
+  });
   return { notes: newNotes, materials: mergedMaterials, followUp: voiceOutput.follow_up_task };
 }

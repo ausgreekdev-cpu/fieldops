@@ -37,10 +37,11 @@ export function JobEditModal({ visible, onClose, job, onSaved }: Props) {
     try {
       const db = getRawDb();
       const now = new Date().toISOString();
+      const prev = (await db.getFirstAsync(`SELECT version FROM jobs WHERE id=?`, [job.id])) as { version: number } | null;
       await db.runAsync(`UPDATE jobs SET title=?, customer_name=?, customer_phone=?, address=?, updated_at=?, synced=0, version=version+1 WHERE id=?`,
         [title.trim(), customerName.trim(), phone.trim() || null, address.trim(), now, job.id]);
       const mgr = SyncManager.getInstance(getSupabase());
-      await mgr.enqueue('jobs', job.id, 'update', { id: job.id, title: title.trim(), customer_name: customerName.trim(), customer_phone: phone.trim() || null, address: address.trim(), updated_at: now });
+      await mgr.enqueue('jobs', job.id, 'update', { id: job.id, title: title.trim(), customer_name: customerName.trim(), customer_phone: phone.trim() || null, address: address.trim(), updated_at: now, _expected_version: prev?.version ?? 1 });
       Alert.alert('Saved offline ✓', 'Will sync when back online');
       onSaved();
       onClose();

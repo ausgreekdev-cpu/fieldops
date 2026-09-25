@@ -16,12 +16,20 @@ import * as FileSystem from 'expo-file-system';
 import { getRawDb } from '@/db/client';
 import type { OutboxOp } from '@/types';
 import { captureError, addBreadcrumb } from '@/lib/monitoring';
+import {
+  MAX_ATTEMPTS,
+  computeBackoffMs,
+  isInvoiceNumberConflict,
+  isVersionConflictError,
+  nextOutboxStatus,
+  pullBoundary,
+  resolveJobOperation,
+} from './outboxLogic';
 
 // ── Config ──
 const BATCH_SIZE = 10;
-const BASE_DELAY_MS = 1000;
-const MAX_DELAY_MS = 5 * 60 * 1000; // 5 min
-const MAX_ATTEMPTS = 10;
+const PULL_PAGE_SIZE = 200;
+const PULL_BOUNDARY_SKEW_MS = 2000;
 
 type TableName = 'jobs' | 'job_photos' | 'job_signatures' | 'checklist_submissions' | 'compliance_checklists' | 'invoices' | 'companies';
 
@@ -66,6 +74,12 @@ export class SyncManager {
 
   /** Start NetInfo listener + periodic drain */
   async init(): Promise<void> {
+    // Recover rows stranded in 'syncing' by a previous crash/kill.
+    try {
+      const db = getRawDb();
+      await db.runAsync(`UPDATE outbox SET status='pending' WHERE status='syncing'`);
+    } catch {}
+
     const state = await NetInfo.fetch();
     this.isOnline = !!state.isConnected;
     this.notify();
@@ -108,8 +122,18 @@ export class SyncManager {
   async upsertJob(job: Record<string, unknown>): Promise<void> {
     const db = getRawDb();
     const now = new Date().toISOString();
+    const isNew = !job.id;
     const id = (job.id as string) || uuid();
     const localId = (job.local_id as string) || id;
+
+    // Version guard: for updates, capture the pre-bump local version so the
+    // server can reject the sync if another device edited the job meanwhile.
+    let expectedVersion: number | null = null;
+    if (!isNew) {
+      const cur = (await db.getFirstAsync(`SELECT version FROM jobs WHERE id=?`, [id])) as { version: number } | null;
+      if (cur) expectedVersion = cur.version;
+    }
+
     const row = {
       id,
       local_id: localId,
@@ -138,7 +162,14 @@ export class SyncManager {
        ON CONFLICT(id) DO UPDATE SET customer_name=excluded.customer_name, address=excluded.address, title=excluded.title, status=excluded.status, materials=excluded.materials, notes=excluded.notes, updated_at=excluded.updated_at, synced=0, version=version+1`,
       Object.values(row) as any
     );
-    await this.enqueue('jobs', id, (job.id ? 'update' : 'insert') as OutboxOp, { ...row, materials: job.materials ?? [] });
+    const payload: Record<string, unknown> = { ...row, materials: job.materials ?? [] };
+    if (expectedVersion !== null) {
+      // Local version is now expectedVersion+1 (bumped by the upsert above) —
+      // keep payload.version in step with the local row.
+      payload.version = expectedVersion + 1;
+      payload._expected_version = expectedVersion;
+    }
+    await this.enqueue('jobs', id, resolveJobOperation(isNew, expectedVersion) as OutboxOp, payload);
   }
 
   async queueFileUpload(jobId: string, companyId: string, localUri: string, storagePath: string): Promise<void> {
@@ -162,9 +193,10 @@ export class SyncManager {
     try {
       const db = getRawDb();
       const now = new Date().toISOString();
-      // Fetch batch ready to retry (pending or failed with nextRetry <= now)
+      // Only 'pending' rows are eligible — 'failed' is terminal until a
+      // manual reset (Sync Debug → "Clear Failed") flips it back.
       const rows = (await db.getAllAsync(
-        `SELECT * FROM outbox WHERE status IN ('pending','failed') AND (next_retry_at IS NULL OR next_retry_at <= ?) ORDER BY created_at ASC LIMIT ?`,
+        `SELECT * FROM outbox WHERE status='pending' AND (next_retry_at IS NULL OR next_retry_at <= ?) ORDER BY created_at ASC LIMIT ?`,
         [now, BATCH_SIZE]
       )) as OutboxRow[];
 
@@ -183,31 +215,39 @@ export class SyncManager {
           synced++;
         } catch (e: any) {
           const attempts = (row.attempts ?? 0) + 1;
-          const delay = Math.min(BASE_DELAY_MS * Math.pow(2, attempts), MAX_DELAY_MS) + Math.random() * 1000;
+          const isConflict = isVersionConflictError(e?.message);
+          const delay = computeBackoffMs(attempts);
           const nextRetry = new Date(Date.now() + delay).toISOString();
-          const status = attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
+          const status = nextOutboxStatus(attempts, isConflict);
           const error = e?.message?.slice(0, 1000) ?? String(e);
           await db.runAsync(`UPDATE outbox SET attempts=?, next_retry_at=?, status=?, error=? WHERE id=?`, [
-            attempts,
+            status === 'failed' && isConflict ? MAX_ATTEMPTS : attempts,
             nextRetry,
             status,
             error,
             row.id,
           ]);
           failed++;
-          captureError(new Error(`Sync failed ${row.table_name}/${row.record_id}: ${error}`), { table: row.table_name, attempts });
-          // Also log to remote sync_logs if possible
+          captureError(new Error(`Sync failed ${row.table_name}/${row.record_id}: ${error}`), { table: row.table_name, attempts, conflict: isConflict });
+          // Also log to remote sync_logs (needs company_id to pass RLS)
           try {
-            await this.supabase.from('sync_logs').insert({
+            let payload: Record<string, unknown> = {};
+            try { payload = JSON.parse(row.payload); } catch {}
+            const companyId = (payload as any).company_id ?? (row.table_name === 'companies' ? row.record_id : null);
+            const { error: logErr } = await this.supabase.from('sync_logs').insert({
+              company_id: companyId,
               table_name: row.table_name,
               record_id: row.record_id,
               operation: row.operation,
-              payload: JSON.parse(row.payload),
+              payload,
               status: 'failed',
               error,
               attempts,
             });
-          } catch {}
+            if (logErr) captureError(new Error(`sync_logs insert blocked: ${logErr.message}`), { table: row.table_name });
+          } catch (logE) {
+            captureError(logE, { where: 'sync_logs insert' });
+          }
         }
       }
     } finally {
@@ -220,6 +260,36 @@ export class SyncManager {
   private async syncRow(row: OutboxRow): Promise<void> {
     const payload = JSON.parse(row.payload);
     const table = row.table_name;
+
+    // Jobs updates — version guard: server rejects if another device
+    // edited the job since this payload was created (no silent clobber).
+    if (table === 'jobs' && row.operation === 'update') {
+      const { _expected_version, synced, ...rest } = payload as any;
+      if (typeof rest.materials === 'string') {
+        try { rest.materials = JSON.parse(rest.materials); } catch {}
+      }
+      const expected = typeof _expected_version === 'number' ? _expected_version : null;
+      if (expected !== null) {
+        const { data, error } = await this.supabase.rpc('update_job_safe', { p_job: rest, p_expected_version: expected });
+        if (error) {
+          // PGRST202 = RPC not deployed yet — fall back to unguarded upsert
+          if (error.code === 'PGRST202') {
+            const { error: upErr } = await this.supabase.from('jobs').upsert(rest, { onConflict: 'id' });
+            if (upErr) throw upErr;
+            return;
+          }
+          throw error;
+        }
+        // setof returns [] on version conflict
+        if (Array.isArray(data) && data.length === 0) {
+          throw new Error(`version conflict: another device edited this job (expected v${expected})`);
+        }
+        return;
+      }
+      const { error: plainErr } = await this.supabase.from('jobs').upsert(rest, { onConflict: 'id' });
+      if (plainErr) throw plainErr;
+      return;
+    }
 
     // Companies — logo upload
     if (table === 'companies' && (payload as any)._localLogoUri) {
@@ -298,8 +368,7 @@ export class SyncManager {
       if (clean.line_items && typeof clean.line_items === 'string') {
         try { clean.line_items = JSON.parse(clean.line_items as string); } catch {}
       }
-      const { error } = await this.supabase.from('invoices').upsert(clean, { onConflict: 'id' });
-      if (error) throw error;
+      await this.upsertInvoice(clean, row.record_id);
       return;
     }
 
@@ -326,6 +395,26 @@ export class SyncManager {
     }
   }
 
+  /**
+   * Upsert an invoice. On a unique invoice_number collision (two devices
+   * minted the same offline number), renumber via the server function and
+   * retry once — keeps local ids stable while server numbers stay unique.
+   */
+  private async upsertInvoice(clean: Record<string, any>, recordId: string): Promise<void> {
+    const { error } = await this.supabase.from('invoices').upsert(clean, { onConflict: 'id' });
+    if (!error) return;
+    if (!isInvoiceNumberConflict(error)) throw error;
+
+    const { data: newNo, error: rpcErr } = await this.supabase.rpc('next_invoice_number', { target_company: clean.company_id });
+    if (rpcErr || typeof newNo !== 'string' || !newNo) throw error;
+
+    const db = getRawDb();
+    await db.runAsync(`UPDATE invoices SET invoice_number=? WHERE id=?`, [newNo, recordId]);
+    clean.invoice_number = newNo;
+    const retry = await this.supabase.from('invoices').upsert(clean, { onConflict: 'id' });
+    if (retry.error) throw retry.error;
+  }
+
   private async markRecordSynced(table: TableName, recordId: string) {
     try {
       const db = getRawDb();
@@ -341,57 +430,171 @@ export class SyncManager {
     const metaRow = (await db.getFirstAsync(`SELECT value FROM sync_meta WHERE key=?`, [`last_pull_${table}`])) as
       | { value: string }
       | null;
-    const lastPulled = metaRow?.value ?? '1970-01-01T00:00:00Z';
+    const lastPulled = metaRow?.value ?? '1970-01-01T00:00:00.000Z';
 
-    const { data, error } = await this.supabase.from(table).select('*').gt('updated_at', lastPulled).limit(200);
-    if (error) throw error;
-    if (!data || data.length === 0) return 0;
+    let offset = 0;
+    let total = 0;
+    let maxUpdated = lastPulled;
+    // Page through EVERY row newer than the boundary — never stop at the
+    // first page (the old limit(200) silently dropped everything after it).
+    for (;;) {
+      const { data, error } = await this.supabase
+        .from(table)
+        .select('*')
+        .gt('updated_at', lastPulled)
+        .order('updated_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + PULL_PAGE_SIZE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      for (const r of data) await this.applyPulledRow(db, table, r);
+      total += data.length;
+      const last = data[data.length - 1] as { updated_at?: string };
+      if (last.updated_at && last.updated_at > maxUpdated) maxUpdated = last.updated_at;
+      if (data.length < PULL_PAGE_SIZE) break;
+      offset += PULL_PAGE_SIZE;
+    }
 
-    for (const row of data) {
-      // Upsert into sqlite — stringify jsonb fields
-      if (table === 'jobs') {
+    if (total > 0) {
+      const boundary = pullBoundary(maxUpdated, lastPulled, PULL_BOUNDARY_SKEW_MS);
+      await db.runAsync(`INSERT INTO sync_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, [
+        `last_pull_${table}`,
+        boundary,
+      ]);
+      this.notify();
+    }
+    return total;
+  }
+
+  /**
+   * Write a server row into local SQLite. Pending local edits win: rows with
+   * synced=0 (unsynced outbox work) are never overwritten by a pull.
+   */
+  private async applyPulledRow(db: any, table: TableName, row: any): Promise<void> {
+    const j = (v: unknown, fallback: string) => (v == null ? fallback : typeof v === 'string' ? v : JSON.stringify(v));
+    switch (table) {
+      case 'jobs': {
         await db.runAsync(
           `INSERT INTO jobs (id, local_id, company_id, assigned_to, customer_name, customer_phone, address, lat, lng, title, description, status, scheduled_at, materials, notes, version, created_at, updated_at, synced)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-           ON CONFLICT(id) DO UPDATE SET customer_name=excluded.customer_name, status=excluded.status, materials=excluded.materials, notes=excluded.notes, updated_at=excluded.updated_at, synced=1`,
+           ON CONFLICT(id) DO UPDATE SET customer_name=excluded.customer_name, customer_phone=excluded.customer_phone, address=excluded.address, lat=excluded.lat, lng=excluded.lng, title=excluded.title, description=excluded.description, status=excluded.status, scheduled_at=excluded.scheduled_at, materials=excluded.materials, notes=excluded.notes, version=excluded.version, updated_at=excluded.updated_at, synced=1
+           WHERE jobs.synced = 1`,
           [
             row.id,
-            row.local_id,
+            row.local_id ?? null,
             row.company_id,
-            row.assigned_to,
+            row.assigned_to ?? null,
             row.customer_name,
-            row.customer_phone,
+            row.customer_phone ?? null,
             row.address,
-            row.lat,
-            row.lng,
+            row.lat ?? null,
+            row.lng ?? null,
             row.title,
-            row.description,
+            row.description ?? null,
             row.status,
-            row.scheduled_at,
-            JSON.stringify(row.materials ?? []),
-            row.notes,
-            row.version,
+            row.scheduled_at ?? null,
+            j(row.materials, '[]'),
+            row.notes ?? null,
+            row.version ?? 1,
             row.created_at,
             row.updated_at,
-          ] as any
+          ]
         );
+        return;
       }
-      // other tables: generic JSON stash — extend as needed
+      case 'companies': {
+        await db.runAsync(
+          `INSERT INTO companies (id, name, logo_url, abn, tax_rate, subscription_tier, created_at, updated_at, synced)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(id) DO UPDATE SET name=excluded.name, logo_url=excluded.logo_url, abn=excluded.abn, tax_rate=excluded.tax_rate, subscription_tier=excluded.subscription_tier, updated_at=excluded.updated_at, synced=1
+           WHERE companies.synced = 1`,
+          [row.id, row.name, row.logo_url ?? null, row.abn ?? null, row.tax_rate ?? 10, row.subscription_tier ?? 'free', row.created_at, row.updated_at]
+        );
+        return;
+      }
+      case 'job_photos': {
+        await db.runAsync(
+          `INSERT INTO job_photos (id, job_id, company_id, storage_path, local_uri, caption, taken_at, synced)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(id) DO UPDATE SET storage_path=excluded.storage_path, caption=excluded.caption, synced=1
+           WHERE job_photos.synced = 1`,
+          [row.id, row.job_id, row.company_id, row.storage_path, row.local_uri ?? null, row.caption ?? null, row.taken_at]
+        );
+        return;
+      }
+      case 'job_signatures': {
+        await db.runAsync(
+          `INSERT INTO job_signatures (id, job_id, company_id, storage_path, signed_by_name, signed_at, synced)
+           VALUES (?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(id) DO UPDATE SET storage_path=excluded.storage_path, synced=1
+           WHERE job_signatures.synced = 1`,
+          [row.id, row.job_id, row.company_id, row.storage_path, row.signed_by_name, row.signed_at]
+        );
+        return;
+      }
+      case 'compliance_checklists': {
+        await db.runAsync(
+          `INSERT INTO compliance_checklists (id, company_id, name, description, fields, is_active, synced)
+           VALUES (?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, fields=excluded.fields, is_active=excluded.is_active, synced=1
+           WHERE compliance_checklists.synced = 1`,
+          [row.id, row.company_id, row.name, row.description ?? null, j(row.fields, '[]'), row.is_active ? 1 : 0]
+        );
+        return;
+      }
+      case 'checklist_submissions': {
+        await db.runAsync(
+          `INSERT INTO checklist_submissions (id, job_id, checklist_id, company_id, responses, photo_proofs, signed_by, signed_at, result, created_at, synced)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(id) DO UPDATE SET responses=excluded.responses, photo_proofs=excluded.photo_proofs, signed_by=excluded.signed_by, signed_at=excluded.signed_at, result=excluded.result, synced=1
+           WHERE checklist_submissions.synced = 1`,
+          [
+            row.id,
+            row.job_id,
+            row.checklist_id,
+            row.company_id,
+            j(row.responses, '{}'),
+            j(row.photo_proofs, '[]'),
+            row.signed_by ?? null,
+            row.signed_at ?? null,
+            row.result ?? null,
+            row.created_at,
+          ]
+        );
+        return;
+      }
+      case 'invoices': {
+        await db.runAsync(
+          `INSERT INTO invoices (id, job_id, company_id, invoice_number, line_items, subtotal, tax, total, status, pdf_path, payment_link, paid_at, created_at, synced)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(id) DO UPDATE SET line_items=excluded.line_items, subtotal=excluded.subtotal, tax=excluded.tax, total=excluded.total, status=excluded.status, payment_link=excluded.payment_link, paid_at=excluded.paid_at, synced=1
+           WHERE invoices.synced = 1`,
+          [
+            row.id,
+            row.job_id,
+            row.company_id,
+            row.invoice_number,
+            j(row.line_items, '[]'),
+            row.subtotal ?? 0,
+            row.tax ?? 0,
+            row.total ?? 0,
+            row.status ?? 'draft',
+            row.pdf_path ?? null,
+            row.payment_link ?? null,
+            row.paid_at ?? null,
+            row.created_at,
+          ]
+        );
+        return;
+      }
+      default:
+        return;
     }
-
-    const maxUpdated = data.reduce((m, r) => (r.updated_at > m ? r.updated_at : m), lastPulled);
-    await db.runAsync(`INSERT INTO sync_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, [
-      `last_pull_${table}`,
-      maxUpdated,
-    ]);
-    this.notify();
-    return data.length;
   }
 
   // ── Status / listeners ──
-  getStatusSync(): SyncStatus {
-    // sync read — caller should use hook for reactive
-    return { isOnline: this.isOnline, isSyncing: this.isSyncing, pendingCount: 0 };
+  async getStatusSync(): Promise<SyncStatus> {
+    return { isOnline: this.isOnline, isSyncing: this.isSyncing, pendingCount: await this.getPendingCount() };
   }
 
   async getPendingCount(): Promise<number> {
