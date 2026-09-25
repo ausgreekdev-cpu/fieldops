@@ -117,9 +117,9 @@ async function stepSupabase() {
   }
 
   p('  Step 3: Apply database schema (tables + RLS + storage buckets + email auth).');
-  if (await confirm('Run `supabase db push` to deploy migrations 001 + 002 to production?')) {
+  if (await confirm('Run `supabase db push` to deploy migrations 001-003 to production?')) {
     run('supabase db push');
-    info('Migrations: 001_schema.sql (core) + 002_email_auth.sql (users.email for email login).');
+    info('Migrations: 001_schema.sql (core) + 002_email_auth.sql (users.email for email login) + 003_sync_integrity.sql (race-safe invoice numbers, version-guarded job updates).');
     info('Email OTP login works out of the box — no SMS/Twilio needed.');
   }
 
