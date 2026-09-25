@@ -22,6 +22,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       return { filePath: stub, type: 'sourceFile' };
     }
   }
+  // drizzle-orm 0.33 imports the removed expo-sqlite/next subpath (SDK 52 /
+  // expo-sqlite 15 merged it into the main entry) — alias it for native.
+  if (moduleName === 'expo-sqlite/next') {
+    return { filePath: require.resolve('expo-sqlite'), type: 'sourceFile' };
+  }
   if (origResolve) return origResolve(context, moduleName, platform);
   return context.resolveRequest(context, moduleName, platform);
 };

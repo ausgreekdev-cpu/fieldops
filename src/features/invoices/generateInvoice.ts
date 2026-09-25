@@ -4,8 +4,7 @@ import { Platform, Alert, Linking } from 'react-native';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
-import * as React from 'react';
-import { InvoicePdf } from './pdfTemplate';
+import { buildInvoicePdf } from './pdfWriter';
 
 function uuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r=(Math.random()*16)|0; const v=c==='x'? r : (r&0x3)|0x8; return v.toString(16); }); }
 
@@ -50,42 +49,23 @@ export async function generateInvoiceLocally({ jobId, companyId, taxRate = 0.1 }
   const id = uuid();
   const now = new Date().toISOString();
 
-  // Generate PDF — native uses @react-pdf/renderer, web uses placeholder (stubbed pdfkit)
-  const doc = React.createElement(InvoicePdf, {
-    company: { name: company?.name ?? 'FieldOps Company', abn: company?.abn ?? undefined, address: company?.address ?? undefined },
-    invoice: { invoice_number: invoiceNumber, created_at: now, line_items: lineItems, subtotal, tax, total },
-    customer: { name: job.customer_name, address: job.address },
-  } as any);
-
-  let pdfUri = '';
-  try {
-    if (Platform.OS === 'web') throw new Error('web uses placeholder PDF (pdfkit stubbed)');
-    const { pdf } = await import('@react-pdf/renderer');
-    // @ts-ignore — pdf instance has toBuffer in node/expo
-    const instance = pdf(doc as any);
-    const buffer: Uint8Array | Buffer | Blob = await (instance as any).toBuffer();
-    // buffer may be Uint8Array or Blob
-    let base64: string;
-    if (buffer instanceof Uint8Array || Buffer.isBuffer(buffer as any)) {
-      base64 = Buffer.from(buffer as any).toString('base64');
-    } else if (buffer instanceof Blob) {
-      const ab = await (buffer as Blob).arrayBuffer();
-      base64 = Buffer.from(ab as any).toString('base64');
-    } else {
-      // fallback to string
-      const str = await (instance as any).toString();
-      base64 = Buffer.from(str).toString('base64');
-    }
-    pdfUri = `${FileSystem.documentDirectory}${invoiceNumber}.pdf`;
-    await FileSystem.writeAsStringAsync(pdfUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-  } catch (e) {
-    // Fallback: write a minimal placeholder PDF (still shareable) so flow never blocks offline
-    console.warn('[generateInvoice] pdf render fallback', e);
-    pdfUri = `${FileSystem.documentDirectory}${invoiceNumber}.pdf`;
-    // tiny valid PDF header placeholder
-    const placeholder = `%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n`;
-    await FileSystem.writeAsStringAsync(pdfUri, placeholder, { encoding: FileSystem.EncodingType.UTF8 });
-  }
+  // Generate PDF — dependency-free writer (pdfWriter.ts). Pure ASCII output,
+  // no Buffer/pdfkit/@react-pdf — those never resolved under Metro for
+  // native and broke iOS/Android bundles.
+  const pdfText = buildInvoicePdf({
+    invoiceNumber,
+    createdAt: now,
+    companyName: company?.name ?? 'FieldOps Company',
+    abn: company?.abn ?? undefined,
+    customerName: job.customer_name,
+    customerAddress: job.address,
+    lineItems,
+    subtotal,
+    tax,
+    total,
+  });
+  const pdfUri = `${FileSystem.documentDirectory}${invoiceNumber}.pdf`;
+  await FileSystem.writeAsStringAsync(pdfUri, pdfText, { encoding: FileSystem.EncodingType.UTF8 });
 
   // Save invoice locally (offline-first)
   await db.runAsync(
@@ -103,9 +83,10 @@ export async function generateInvoiceLocally({ jobId, companyId, taxRate = 0.1 }
     _localPdfUri: pdfUri, // private for uploader
   });
 
-  // Mark job invoiced locally
-  await db.runAsync(`UPDATE jobs SET status='invoiced', updated_at=?, synced=0 WHERE id=?`, [now, jobId]);
-  await mgr.enqueue('jobs' as any, jobId, 'update', { id: jobId, status: 'invoiced', updated_at: now });
+  // Mark job invoiced locally (version guard for sync)
+  const prevJob = (await db.getFirstAsync(`SELECT version FROM jobs WHERE id=?`, [jobId])) as { version: number } | null;
+  await db.runAsync(`UPDATE jobs SET status='invoiced', updated_at=?, synced=0, version=version+1 WHERE id=?`, [now, jobId]);
+  await mgr.enqueue('jobs' as any, jobId, 'update', { id: jobId, status: 'invoiced', updated_at: now, _expected_version: prevJob?.version ?? 1 });
 
   return { id, pdfUri, number: invoiceNumber };
 }
