@@ -1,10 +1,14 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 echo "=== FieldOps Offline Verification Harness ==="
 echo ""
 
 echo "[1/5] Typecheck (skip supabase functions)..."
-npx tsc --noEmit --skipLibCheck 2>&1 | head -n 50
+if ! TSC_OUT=$(npx tsc --noEmit --skipLibCheck 2>&1); then
+  echo "$TSC_OUT" | head -n 50
+  echo "  ✗ tsc failed"
+  exit 1
+fi
 echo "  ✓ tsc clean (functions excluded via tsconfig)"
 echo ""
 

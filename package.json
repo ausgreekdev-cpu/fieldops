@@ -80,7 +80,17 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/scripts/"
-    ]
+    ],
+    "transform": {
+      "^.+\\.[jt]sx?$": [
+        "babel-jest",
+        {
+          "presets": [
+            "babel-preset-expo"
+          ]
+        }
+      ]
+    }
   },
   "expo": {
     "install": {

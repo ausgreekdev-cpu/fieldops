@@ -18,6 +18,7 @@ jobs:
           cache: 'npm'
       - run: npm ci --ignore-scripts
       - run: npx tsc --noEmit --skipLibCheck
+      - run: npm run lint
 
   test:
     runs-on: ubuntu-latest
@@ -28,4 +29,22 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --ignore-scripts
-      - run: npm test -- --passWithNoTests
+      - run: npm test
+
+  bundle:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      EXPO_PUBLIC_REVENUECAT_IOS_KEY: test-rc-ios
+      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: test-rc-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - run: npx expo export --platform ios --output-dir dist-ci/ios
+      - run: npx expo export --platform android --output-dir dist-ci/android
