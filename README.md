@@ -58,9 +58,9 @@ app/(tabs)  jobs (Kanban filters), checklists (live templates + editor), invoice
 app/jobs    [id] (detail+voice+photo/receipt+checklists+invoice) + new (create offline)
 app/checklists/[id]  template CRUD
 src/components/ui  Button(48dp+), OfflineBanner, JobCard, VoiceButton(useAudioRecorder), SignaturePad, Paywall
-src/features  checklists (ChecklistForm, useChecklists), invoices (generateInvoice, useInvoices, pdfTemplate), jobs
+src/features  checklists (ChecklistForm, useChecklists), invoices (generateInvoice, useInvoices, pdfWriter), jobs
 src/db  schema, client, seed
-src/sync  SyncManager (outbox, backoff, storage uploads, markRecordSynced), useSyncStatus, mutations
+src/sync  SyncManager (outbox, backoff, storage uploads, markRecordSynced), outboxLogic (pure status/backoff helpers), useSyncStatus, mutations
 src/lib  supabase (SecureStore), revenuecat, maps
 supabase/functions  process-voice-log, parse-receipt, create-payment-link, stripe-webhook, revenuecat-webhook, _shared
 scripts  verify-offline.sh, e2e-offline.test.ts
