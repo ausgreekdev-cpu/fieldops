@@ -48,3 +48,12 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx expo export --platform ios --output-dir dist-ci/ios
       - run: npx expo export --platform android --output-dir dist-ci/android
+
+  deno-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check supabase/functions/*/index.ts
