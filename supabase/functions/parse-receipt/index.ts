@@ -32,6 +32,18 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'Job not found or access denied' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Abuse cap: 30 AI calls per user per hour (GPT Vision cost control)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count } = await admin
+      .from('sync_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .in('operation', ['ai_voice', 'ai_receipt'])
+      .gte('created_at', oneHourAgo);
+    if ((count ?? 0) >= 30) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded — 30 AI requests/hour' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Read image as base64 for Vision model
     const bytes = new Uint8Array(await image.arrayBuffer());
     let b64 = '';

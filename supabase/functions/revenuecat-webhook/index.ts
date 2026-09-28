@@ -11,10 +11,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     const secret = Deno.env.get('REVENUECAT_WEBHOOK_SECRET');
-    if (secret) {
-      const auth = req.headers.get('authorization');
-      if (auth !== `Bearer ${secret}`) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (!secret) {
+      return new Response(JSON.stringify({ error: 'SECRET_NOT_CONFIGURED', hint: 'run: supabase secrets set REVENUECAT_WEBHOOK_SECRET=<random>' }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    const auth = req.headers.get('authorization');
+    if (auth !== `Bearer ${secret}`) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const body = await req.json() as any;
     const event = body.event as any; // RevenueCat event envelope

@@ -12,14 +12,13 @@ Deno.serve(async (req: Request) => {
     const secret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
     const rawBody = await req.text();
 
-    // Fail-closed: if secret is configured, signature is required and must verify
-    if (secret) {
-      if (!sig) return new Response(JSON.stringify({ error: 'Missing stripe-signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      const verified = await verifyStripeSignature(rawBody, sig, secret);
-      if (!verified) return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    } else {
-      console.warn('[stripe-webhook] STRIPE_WEBHOOK_SECRET not set — skipping verification (dev only)');
+    // Fail-closed: secret must be configured, signature required and must verify
+    if (!secret) {
+      return new Response(JSON.stringify({ error: 'SECRET_NOT_CONFIGURED', hint: 'run: supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...' }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    if (!sig) return new Response(JSON.stringify({ error: 'Missing stripe-signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const verified = await verifyStripeSignature(rawBody, sig, secret);
+    if (!verified) return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const event = JSON.parse(rawBody) as any;
     const admin = getAdminClient();
@@ -38,11 +37,30 @@ Deno.serve(async (req: Request) => {
     switch (event.type) {
       case 'checkout.session.completed':
       case 'payment_intent.succeeded': {
-        const invoiceId = event.data?.object?.metadata?.invoice_id;
+        const obj = event.data?.object;
+        const invoiceId = obj?.metadata?.invoice_id;
         if (invoiceId) {
-          await admin.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', invoiceId);
-          const { data: inv } = await admin.from('invoices').select('job_id').eq('id', invoiceId).single();
-          if (inv?.job_id) await admin.from('jobs').update({ status: 'invoiced' }).eq('id', inv.job_id);
+          const { data: inv } = await admin.from('invoices').select('job_id, total, company_id').eq('id', invoiceId).single();
+          if (inv) {
+            // Defense in depth: only mark paid when the paid amount matches the invoice
+            // (checkout.session.amount_total / payment_intent.amount, both in cents)
+            const paidCents = obj?.amount_total ?? obj?.amount;
+            const expectedCents = Math.round(Number(inv.total) * 100);
+            if (paidCents != null && Math.abs(Number(paidCents) - expectedCents) <= 1) {
+              await admin.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', invoiceId);
+              if (inv.job_id) await admin.from('jobs').update({ status: 'invoiced' }).eq('id', inv.job_id);
+            } else {
+              console.warn('[stripe-webhook] amount mismatch — not marking paid', { invoiceId, paidCents, expectedCents });
+              await admin.from('sync_logs').insert({
+                company_id: inv.company_id,
+                table_name: 'invoices',
+                record_id: invoiceId,
+                operation: 'update',
+                payload: { stripe_event: event.id, mismatch: true, paidCents, expectedCents },
+                status: 'synced',
+              });
+            }
+          }
         }
         break;
       }

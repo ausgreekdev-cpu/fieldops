@@ -29,9 +29,11 @@ Deno.serve(async (req: Request) => {
       const { data: inv } = await admin.from('invoices').select('company_id, total, invoice_number').eq('id', invoice_id).single();
       if (!inv) return new Response(JSON.stringify({ error: 'Invoice not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       if (companyId && inv.company_id !== companyId) return new Response(JSON.stringify({ error: 'Invoice not in your company' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      // amount should match invoice total (allow 1 cent rounding)
+      // amount must match invoice total (1 cent rounding allowed) — reject tampered/stale amounts
       const expected = Math.round(Number(inv.total) * 100);
-      if (Math.abs(amt - expected) > 1) console.warn('[create-payment-link] amount mismatch', { amt, expected, invoice_id });
+      if (Math.abs(amt - expected) > 1) {
+        return new Response(JSON.stringify({ error: 'Invoice total changed — refresh and retry', expected_cents: expected }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       if (!companyId) companyId = inv.company_id;
     } else {
       const { data: userRow } = await admin.from('users').select('company_id').eq('id', user.id).single();

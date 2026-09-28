@@ -37,6 +37,18 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'Job not found or access denied' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Abuse cap: 30 AI calls per user per hour (Whisper/GPT cost control)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count } = await admin
+      .from('sync_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .in('operation', ['ai_voice', 'ai_receipt'])
+      .gte('created_at', oneHourAgo);
+    if ((count ?? 0) >= 30) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded — 30 AI requests/hour' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // ── 1. Transcribe with Whisper ──
     const openAiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openAiKey) throw new Error('OPENAI_API_KEY not configured');
