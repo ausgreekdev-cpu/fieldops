@@ -16,7 +16,7 @@ export function useChecklists(companyId?: string) {
       const db = getRawDb();
       // If companyId given, seed defaults first (offline-first)
       if (companyId) {
-        try { await seedDefaultChecklists(companyId); } catch (e) { /* ignore */ }
+        try { await seedDefaultChecklists(companyId); } catch { /* ignore */ }
       }
       const rows = (await db.getAllAsync(
         `SELECT id, company_id as companyId, name, description, fields, is_active as isActive FROM compliance_checklists WHERE is_active=1 ORDER BY name ASC`
@@ -56,7 +56,7 @@ export function useChecklists(companyId?: string) {
               })));
             }
           }
-        } catch (e: any) {
+        } catch {
           // offline = ignore
         }
       }

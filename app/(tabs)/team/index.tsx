@@ -12,7 +12,7 @@ import { useActivity } from '@/features/team/useActivity';
 interface Member { id: string; display_name: string | null; phone: string | null; role: string; }
 
 export default function TeamScreen() {
-  const { role: myRole, companyId: myCompanyId } = useCurrentUser();
+  const { role: myRole } = useCurrentUser();
   const [members, setMembers] = React.useState<Member[]>([]);
   const [invitePhone, setInvitePhone] = React.useState('');
   const [inviteName, setInviteName] = React.useState('');
@@ -68,7 +68,7 @@ export default function TeamScreen() {
       const supabase = getSupabase();
       // Create pending invite via Supabase: insert into users with phone and company_id, role technician
       // For MVP, we create a placeholder user row that will be claimed on OTP login (phone match)
-      const { data, error } = await supabase.from('users').insert({
+      const { error } = await supabase.from('users').insert({
         phone: invitePhone.trim(),
         display_name: inviteName.trim() || null,
         company_id: companyId,

@@ -23,7 +23,7 @@ export async function generateInvoiceLocally({ jobId, companyId, taxRate = 0.1 }
   const materials: any[] = job.materials ? JSON.parse(job.materials) : [];
 
   // Build line items from materials + flat labour fallback if empty
-  let lineItems: Array<{ desc: string; qty: number; unit_price: number; amount: number }> = materials.map((m: any) => ({
+  let lineItems: { desc: string; qty: number; unit_price: number; amount: number }[] = materials.map((m: any) => ({
     desc: m.name ?? m.desc ?? 'Materials',
     qty: Number(m.qty ?? 1),
     unit_price: Number(m.unit_price ?? m.price ?? 0),

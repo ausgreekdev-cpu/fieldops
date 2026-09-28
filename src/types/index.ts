@@ -14,7 +14,7 @@ export interface Job {
   description?: string;
   status: JobStatus;
   scheduledAt?: string;
-  materials: Array<{ name: string; qty: number; unit?: string; unit_price?: number }>;
+  materials: { name: string; qty: number; unit?: string; unit_price?: number }[];
   notes?: string;
   version: number;
   createdAt: string;
@@ -24,7 +24,7 @@ export interface Job {
 
 export interface VoiceLogOutput {
   formatted_notes: string;
-  materials: Array<{ name: string; qty: number; unit?: string }>;
+  materials: { name: string; qty: number; unit?: string }[];
   follow_up_task: { title: string; due_date?: string } | null;
   confidence: number;
   transcript: string;
@@ -33,7 +33,7 @@ export interface VoiceLogOutput {
 export interface ReceiptOutput {
   vendor: string;
   date: string; // ISO
-  line_items: Array<{ desc: string; qty: number; price: number }>;
+  line_items: { desc: string; qty: number; price: number }[];
   total: number;
   tax?: number;
   currency: string;

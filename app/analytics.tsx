@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { useStats } from '@/features/analytics/useStats';

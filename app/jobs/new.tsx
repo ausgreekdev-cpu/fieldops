@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { getRawDb } from '@/db/client';

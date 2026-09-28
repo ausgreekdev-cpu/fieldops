@@ -15,7 +15,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import * as FileSystem from 'expo-file-system';
 import { getRawDb } from '@/db/client';
 import type { OutboxOp } from '@/types';
-import { captureError, addBreadcrumb } from '@/lib/monitoring';
+import { captureError } from '@/lib/monitoring';
 import {
   MAX_ATTEMPTS,
   computeBackoffMs,

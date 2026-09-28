@@ -27,7 +27,7 @@ const mockSupabase = {
 
 describe('Offline Sync Harness', () => {
   it('queues job locally and drains with backoff', async () => {
-    const db = await getTestDb();
+    await getTestDb();
     const mgr = SyncManager.getInstance(mockSupabase as any);
     // @ts-ignore private
     (mgr as any).isOnline = true;
@@ -42,7 +42,6 @@ describe('Offline Sync Harness', () => {
     expect(pending2).toBeGreaterThanOrEqual(1);
 
     // Fast-forward by clearing next_retry (test helper) and retry
-    const raw = (mgr as any).getRawDb?.() ?? null;
     // In real test, mock Date.now or update outbox next_retry_at to past
     expect(res1.failed).toBeGreaterThanOrEqual(0);
   });

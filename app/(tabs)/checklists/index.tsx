@@ -27,7 +27,7 @@ export default function ChecklistsScreen() {
         }
       } catch {}
     })();
-  }, []);
+  }, [companyId]);
 
   if (loading) return <View style={[styles.wrap, { justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator /><Text style={{ color: '#64748B', marginTop: 8 }}>Loading templates…</Text></View>;
   if (error) return <View style={styles.wrap}><Text style={{ color: '#DC2626', padding: 16 }}>{error}</Text><Button title="Retry" variant="secondary" onPress={refresh} /></View>;

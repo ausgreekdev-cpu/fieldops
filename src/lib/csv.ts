@@ -30,7 +30,7 @@ export async function exportInvoicesCsv(invoices: any[]) {
   return exportCsvAndShare('invoices', header, rows);
 }
 
-export async function exportRevenueCsv(points: Array<{ label: string; revenue: number; count: number }>) {
+export async function exportRevenueCsv(points: { label: string; revenue: number; count: number }[]) {
   const header = ['week_label', 'revenue', 'invoice_count'];
   const rows = points.map(p => [p.label, p.revenue, p.count]);
   return exportCsvAndShare('revenue_trend', header, rows);

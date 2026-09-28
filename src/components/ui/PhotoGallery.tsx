@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, FlatList, Image, Pressable, Alert, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, Pressable, Modal, Dimensions } from 'react-native';
 import { getRawDb } from '@/db/client';
 import { evictLRUIfNeeded } from '@/lib/photoCache';
 

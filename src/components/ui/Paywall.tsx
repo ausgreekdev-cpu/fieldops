@@ -21,7 +21,7 @@ export function Paywall({ visible, onClose, onProGranted, feature }: Props) {
       // If already entitled, close
       checkEntitlement('pro').then(has => { if (has) { onProGranted?.(); onClose(); } });
     }
-  }, [visible]);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps -- parent callbacks may be inline; entitlement check must only run on visibility change
 
   async function handlePurchase() {
     const pkg = offerings?.current?.availablePackages?.[0];

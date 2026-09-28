@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Image, Pressable, Switch } from 'react-native';
 import { Stack, router } from 'expo-router';
-import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Button } from '@/components/ui/Button';
@@ -14,7 +13,7 @@ import { companySchema } from '@/lib/validation';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canManageCompany } from '@/lib/permissions';
 import { getCacheSize, evictLRUIfNeeded } from '@/lib/photoCache';
-import { getPermissionStatus, openNotificationSettings, scheduleWeeklySummary, cancelWeeklySummary, getWeeklyStatus, getAllScheduledCount, scheduleWeeklySummaryDebug } from '@/lib/notifications';
+import { getPermissionStatus, openNotificationSettings, scheduleWeeklySummary, cancelWeeklySummary, getWeeklyStatus, getAllScheduledCount } from '@/lib/notifications';
 import { getBackgroundSyncStatus, registerBackgroundSync, unregisterBackgroundSync } from '@/lib/backgroundSync';
 
 export default function SettingsScreen() {

@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Alert, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, Alert, Pressable } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { getSupabase, setSupabaseConfigOverride } from '@/lib/supabase';
-import { saveSupabaseConfig, loadSupabaseConfig, isPlaceholderUrl } from '@/lib/supabaseConfig';
+import { saveSupabaseConfig, loadSupabaseConfig } from '@/lib/supabaseConfig';
 import { getDb } from '@/db/client';
 
 export default function ConnectScreen() {

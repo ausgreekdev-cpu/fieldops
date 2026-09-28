@@ -50,7 +50,6 @@ export function VoiceButton({ jobId, onResult }: Props) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
-      const form = new FormData();
       // RN FormData file append
       const fileInfo = await FileSystem.getInfoAsync(uri);
       if (!fileInfo.exists) throw new Error('Audio file missing');

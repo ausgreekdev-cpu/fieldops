@@ -28,10 +28,9 @@ export default function InvoicesScreen() {
         }
       } catch {}
     })();
-  }, []);
+  }, [companyId]);
 
   async function handleShare(item: any) {
-    const localPath = item.pdf_path?.startsWith('file:') || item.pdf_path?.startsWith('/') ? item.pdf_path : null;
     // If pdf_path is storage path, try local file first
     try {
       const db = getRawDb();

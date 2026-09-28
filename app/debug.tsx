@@ -3,8 +3,6 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, Alert } 
 import { Stack } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { getRawDb } from '@/db/client';
-import { getSupabase } from '@/lib/supabase';
-import { SyncManager } from '@/sync/SyncManager';
 import { useSyncStatus } from '@/sync/useSyncStatus';
 import { getBackgroundSyncStatus } from '@/lib/backgroundSync';
 import { getAllScheduledCount, getPermissionStatus, scheduleWeeklySummaryDebug, notifyWeeklySummaryNow } from '@/lib/notifications';

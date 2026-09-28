@@ -40,7 +40,7 @@ export default function ChecklistEditorScreen() {
       } catch (e) { console.warn(e); }
       setLoading(false);
     })();
-  }, [id]);
+  }, [id, isNew]);
 
   function addField() {
     setFields(prev => [...prev, { key: `field_${Date.now()}`, label: 'New item', type: 'text', required: false }]);
@@ -79,7 +79,6 @@ export default function ChecklistEditorScreen() {
       if (!companyId) throw new Error('No company found — complete onboarding first');
 
       const tplId = isNew ? uuid() : (id as string);
-      const now = new Date().toISOString();
       await db.runAsync(
         `INSERT INTO compliance_checklists (id, company_id, name, description, fields, is_active, synced)
          VALUES (?, ?, ?, ?, ?, 1, 0)

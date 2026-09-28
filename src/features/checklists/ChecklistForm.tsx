@@ -7,7 +7,7 @@ import { SignaturePad } from '@/components/ui/SignaturePad';
 import { getRawDb } from '@/db/client';
 import { getSupabase } from '@/lib/supabase';
 import { SyncManager } from '@/sync/SyncManager';
-import type { ChecklistField, ChecklistTemplate } from '@/types';
+import type { ChecklistTemplate } from '@/types';
 
 interface Props {
   template: ChecklistTemplate;
@@ -81,7 +81,7 @@ export function ChecklistForm({ template, jobId, companyId, onSubmitted, onCance
       const photoProofPaths: string[] = [];
       const mgr = SyncManager.getInstance(getSupabase());
 
-      for (const [key, localUri] of Object.entries(photoUris)) {
+      for (const key of Object.keys(photoUris)) {
         const filename = `check_${jobId}_${key}_${Date.now()}.jpg`;
         const storagePath = `${companyId}/${jobId}/${filename}`;
         photoProofPaths.push(storagePath);

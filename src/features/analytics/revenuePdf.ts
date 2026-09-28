@@ -20,7 +20,6 @@ function buildPdf(opts: {
   draftSum: number;
 }): string {
   const { companyName, generatedAt, stats, weekly, paidSum, draftSum } = opts;
-  const y = (mm: number) => (mm / 25.4) * 72 + 40; // top margin 40pt
 
   const lines: string[] = [];
   const barCount = Math.max(1, weekly.length);

@@ -42,7 +42,6 @@ export async function seedDefaultChecklists(companyId: string) {
   const existing = (await db.getFirstAsync(`SELECT COUNT(*) as c FROM compliance_checklists WHERE company_id=?`, [companyId])) as { c: number } | null;
   if (existing && existing.c > 0) return; // already seeded
 
-  const now = new Date().toISOString();
   for (const tpl of DEFAULT_TEMPLATES) {
     const id = uuid();
     await db.runAsync(

@@ -7,7 +7,7 @@ import { useJobs } from '@/hooks/useJobs';
 import { exportJobsCsv } from '@/lib/csv';
 import type { JobStatus } from '@/types';
 
-const filters: Array<{ label: string; value: JobStatus | 'all' }> = [
+const filters: { label: string; value: JobStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Scheduled', value: 'scheduled' },
   { label: 'In Progress', value: 'in_progress' },
