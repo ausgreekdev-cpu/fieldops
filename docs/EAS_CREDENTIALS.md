@@ -47,4 +47,4 @@ npm run build:web  # for Linux/desktop; for Android use eas build
 
 - `versionCode` conflict: `eas.json production.autoIncrement true` handles it; if manual, bump `android.versionCode` in `app.json`.
 - `RECORD_AUDIO` rejection: provide video demo in Play Console → App content → Permissions Declaration + justify “one-tap voice-to-job for field workers, no background”.
-- `sb_publishable_...` previously pasted as AI key: rotate Supabase anon key in Supabase Dashboard → API → Reset.
+- `sb_publishable_...` previously pasted as AI key: **no rotation needed** — publishable keys are client-public by design (see docs/SECURITY.md).

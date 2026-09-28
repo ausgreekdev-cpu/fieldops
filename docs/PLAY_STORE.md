@@ -83,4 +83,4 @@ Support: fieldops@example.com • Privacy: ausgreekdev-cpu.github.io/fieldops/pr
 - [ ] Run `npx expo-doctor` + `eas build --profile production --platform android` → `versionCode` autoIncrement check
 - [ ] Data Safety answers match `docs/PRIVACY.md` table
 - [ ] Provide test credentials in Play Console App access
-- [ ] Rotate `sb_publishable_...` that was pasted as AI key earlier (if real)
+- [x] ~~Rotate `sb_publishable_...`~~ — not required: publishable keys are client-public by design (docs/SECURITY.md)

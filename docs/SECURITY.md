@@ -18,7 +18,7 @@
 
 ## Checklist
 - [x] Verified no secrets committed — `git log -S "sb_publishable"` + grep show only rotation warnings in docs, never the key; `.env`/`supabase/.env.local` gitignored with placeholders only
-- [ ] Rotate `sb_publishable_...` that was pasted as an AI key in an earlier chat if it was a real Supabase anon key (Dashboard → API → Reset)
+- [x] ~~Rotate `sb_publishable_...`~~ — **not required.** Publishable keys are client-public by design (they ship in every app bundle and appear in every network request); chat exposure adds no capability beyond that. Rotation would break installed clients for no security gain. Keep publishable keys out of *server* contexts (service_role stays in Edge Functions only).
 - [ ] Enable Supabase email confirmation + SMS OTP rate limiting in Dashboard
 - [ ] Set `STRIPE_WEBHOOK_SECRET` and verify `stripe-signature` on `stripe-webhook`
 - [ ] Set `REVENUECAT_WEBHOOK_SECRET` and use `Authorization: Bearer` on `revenuecat-webhook`
