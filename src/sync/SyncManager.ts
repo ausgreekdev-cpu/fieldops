@@ -24,12 +24,14 @@ import {
   nextOutboxStatus,
   pullBoundary,
   resolveJobOperation,
+  shouldRetryOnManualReset,
 } from './outboxLogic';
 
 // ── Config ──
 const BATCH_SIZE = 10;
 const PULL_PAGE_SIZE = 200;
 const PULL_BOUNDARY_SKEW_MS = 2000;
+const PULL_MAX_ROWS = 2000; // per-table cap per cycle; boundary resumes next cycle
 
 type TableName = 'jobs' | 'job_photos' | 'job_signatures' | 'checklist_submissions' | 'compliance_checklists' | 'invoices' | 'companies';
 
@@ -62,6 +64,7 @@ export class SyncManager {
   private listeners: Set<(s: SyncStatus) => void> = new Set();
   private unsubscribeNetInfo?: () => void;
   private syncInterval?: ReturnType<typeof setInterval>;
+  private initDone = false;
 
   private constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
@@ -72,8 +75,11 @@ export class SyncManager {
     return SyncManager.instance;
   }
 
-  /** Start NetInfo listener + periodic drain */
+  /** Start NetInfo listener + periodic drain. Idempotent — safe to call from every useSyncStatus() mount. */
   async init(): Promise<void> {
+    if (this.initDone) return;
+    this.initDone = true;
+
     // Recover rows stranded in 'syncing' by a previous crash/kill.
     try {
       const db = getRawDb();
@@ -88,7 +94,10 @@ export class SyncManager {
       const wasOnline = this.isOnline;
       this.isOnline = !!state.isConnected;
       this.notify();
-      if (!wasOnline && this.isOnline) this.processQueue().catch(console.error);
+      if (!wasOnline && this.isOnline) {
+        this.processQueue().catch(console.error);
+        this.pullAll().catch(console.error);
+      }
     });
 
     // Periodic drain every 30s when online
@@ -96,13 +105,17 @@ export class SyncManager {
       if (this.isOnline) this.processQueue().catch(console.error);
     }, 30_000);
 
-    // Initial drain if online
-    if (this.isOnline) this.processQueue().catch(console.error);
+    // Initial drain + hydrate if online
+    if (this.isOnline) {
+      this.processQueue().catch(console.error);
+      this.pullAll().catch(console.error);
+    }
   }
 
   destroy() {
     this.unsubscribeNetInfo?.();
     if (this.syncInterval) clearInterval(this.syncInterval);
+    this.initDone = false;
   }
 
   // ── Public API: Enqueue ──
@@ -452,6 +465,7 @@ export class SyncManager {
       const last = data[data.length - 1] as { updated_at?: string };
       if (last.updated_at && last.updated_at > maxUpdated) maxUpdated = last.updated_at;
       if (data.length < PULL_PAGE_SIZE) break;
+      if (total >= PULL_MAX_ROWS) break; // boundary below resumes next cycle
       offset += PULL_PAGE_SIZE;
     }
 
@@ -464,6 +478,23 @@ export class SyncManager {
       this.notify();
     }
     return total;
+  }
+
+  /**
+   * Pull every hydratable table. Each table is throttled by its own
+   * `last_pull_*` keyset boundary, so steady-state cost is one small
+   * query per table (only rows changed since last cycle).
+   */
+  async pullAll(): Promise<void> {
+    if (!this.isOnline) return;
+    const tables: TableName[] = ['jobs', 'invoices', 'companies', 'job_photos', 'job_signatures', 'compliance_checklists', 'checklist_submissions'];
+    for (const table of tables) {
+      try {
+        await this.pull(table);
+      } catch (e) {
+        captureError(e, { where: 'pullAll', table });
+      }
+    }
   }
 
   /**
@@ -607,6 +638,35 @@ export class SyncManager {
     } catch {
       return 0;
     }
+  }
+
+  async getFailedCount(): Promise<number> {
+    try {
+      const db = getRawDb();
+      const row = (await db.getFirstAsync(`SELECT COUNT(*) as c FROM outbox WHERE status='failed'`)) as { c: number } | null;
+      return row?.c ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Manual Retry: re-enable terminal failed rows for a fresh drain, except
+   * version conflicts (replaying a stale payload can never succeed — they
+   * need the newer server row pulled + a fresh edit).
+   */
+  async resetFailedForRetry(): Promise<number> {
+    const db = getRawDb();
+    const rows = (await db.getAllAsync(`SELECT id, error FROM outbox WHERE status='failed'`)) as { id: string; error: string | null }[];
+    const ids = rows.filter(r => shouldRetryOnManualReset(r.error)).map(r => r.id);
+    if (ids.length > 0) {
+      const now = new Date().toISOString();
+      for (const id of ids) {
+        await db.runAsync(`UPDATE outbox SET status='pending', next_retry_at=? WHERE id=?`, [now, id]);
+      }
+      this.notify();
+    }
+    return ids.length;
   }
 
   subscribe(cb: (s: SyncStatus) => void): () => void {

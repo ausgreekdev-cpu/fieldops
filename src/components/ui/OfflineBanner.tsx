@@ -3,15 +3,18 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSyncStatus } from '@/sync/useSyncStatus';
 
 export function OfflineBanner() {
-  const { isOnline, pendingCount, isSyncing, retryNow } = useSyncStatus();
+  const { isOnline, pendingCount, failedCount, isSyncing, retryNow } = useSyncStatus();
 
   if (isOnline && pendingCount === 0) return null;
 
-  const bg = !isOnline ? '#DC2626' : '#F59E0B';
+  const pendingOnly = Math.max(0, pendingCount - failedCount);
+  const bg = !isOnline || failedCount > 0 ? '#DC2626' : '#F59E0B';
   const label = !isOnline
     ? `Offline Mode — ${pendingCount} update${pendingCount === 1 ? '' : 's'} pending sync`
     : isSyncing
     ? `Syncing ${pendingCount} update${pendingCount === 1 ? '' : 's'}…`
+    : failedCount > 0
+    ? `${failedCount} failed${pendingOnly > 0 ? `, ${pendingOnly} pending` : ''}`
     : `${pendingCount} update${pendingCount === 1 ? '' : 's'} pending`;
 
   return (

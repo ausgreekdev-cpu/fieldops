@@ -28,6 +28,15 @@ export function isVersionConflictError(message: string | null | undefined): bool
   return typeof message === 'string' && message.startsWith('version conflict');
 }
 
+/**
+ * Should a terminal `failed` row be re-enabled by a manual "Retry" reset?
+ * Version conflicts are excluded — replaying the same stale payload can
+ * never succeed; they need the newer server row pulled + a fresh edit.
+ */
+export function shouldRetryOnManualReset(error: string | null | undefined): boolean {
+  return !isVersionConflictError(error);
+}
+
 /** Postgres unique-violation (23505) on the invoice number index. */
 export function isInvoiceNumberConflict(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false;

@@ -15,8 +15,10 @@ TaskManager.defineTask(BG_TASK, async () => {
     const mgr = SyncManager.getInstance(supabase);
     const { synced, failed } = await mgr.processQueue();
     if (synced > 0 || failed > 0) await notifySyncComplete(synced, failed);
-    try { await mgr.pull('jobs'); } catch {}
-    return synced > 0 || failed === 0 ? BackgroundFetch.BackgroundFetchResult.NewData : BackgroundFetch.BackgroundFetchResult.NoData;
+    try { await mgr.pullAll(); } catch {}
+    if (synced > 0) return BackgroundFetch.BackgroundFetchResult.NewData;
+    if (failed > 0) return BackgroundFetch.BackgroundFetchResult.Failed;
+    return BackgroundFetch.BackgroundFetchResult.NoData;
   } catch (e) {
     captureError(e, { where: 'bg-sync task' });
     return BackgroundFetch.BackgroundFetchResult.Failed;

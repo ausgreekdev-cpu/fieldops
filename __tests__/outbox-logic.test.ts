@@ -7,6 +7,7 @@ const {
   isInvoiceNumberConflict,
   resolveJobOperation,
   pullBoundary,
+  shouldRetryOnManualReset,
   MAX_ATTEMPTS,
   MAX_DELAY_MS,
 } = require('../src/sync/outboxLogic');
@@ -82,5 +83,21 @@ describe('pull boundary', () => {
   it('boundary is strictly older than max updated_at (rows re-fetched, not skipped)', () => {
     const max = '2026-06-15T12:00:00.000Z';
     expect(pullBoundary(max, '1970-01-01T00:00:00.000Z', 2000) < max).toBe(true);
+  });
+});
+
+describe('manual failed-reset (banner Retry)', () => {
+  it('retries transient failures', () => {
+    expect(shouldRetryOnManualReset('network offline')).toBe(true);
+    expect(shouldRetryOnManualReset('fetch failed')).toBe(true);
+    expect(shouldRetryOnManualReset('attempts exhausted')).toBe(true);
+  });
+  it('never retries version conflicts', () => {
+    expect(shouldRetryOnManualReset('version conflict: another device edited this job (expected v3)')).toBe(false);
+  });
+  it('treats missing/empty error as retryable', () => {
+    expect(shouldRetryOnManualReset(null)).toBe(true);
+    expect(shouldRetryOnManualReset(undefined)).toBe(true);
+    expect(shouldRetryOnManualReset('')).toBe(true);
   });
 });
