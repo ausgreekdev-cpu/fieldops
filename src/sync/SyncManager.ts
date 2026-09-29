@@ -19,10 +19,12 @@ import { captureError } from '@/lib/monitoring';
 import {
   MAX_ATTEMPTS,
   computeBackoffMs,
+  isConflictRow,
   isInvoiceNumberConflict,
   isVersionConflictError,
   nextOutboxStatus,
   pullBoundary,
+  rebaseJobPayload,
   resolveJobOperation,
   shouldPullNextPage,
   shouldRetryOnManualReset,
@@ -305,18 +307,19 @@ export class SyncManager {
       return;
     }
 
-    // Companies — logo upload
+    // Companies — logo upload. Errors propagate so the outbox row retries
+    // (was: swallowed → file silently never uploaded while row marked synced).
     if (table === 'companies' && (payload as any)._localLogoUri) {
       const localUri = (payload as any)._localLogoUri as string;
-      try {
-        const info = await FileSystem.getInfoAsync(localUri);
-        if (info.exists) {
-          const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
-          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-          const storagePath = (payload as any).logo_url as string;
-          if (storagePath) await this.supabase.storage.from('company-logos').upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true });
-        }
-      } catch {}
+      const info = await FileSystem.getInfoAsync(localUri);
+      if (!info.exists) throw new Error(`local logo file missing: ${localUri}`);
+      const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const storagePath = (payload as any).logo_url as string;
+      if (storagePath) {
+        const { error: uploadErr } = await this.supabase.storage.from('company-logos').upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true });
+        if (uploadErr) throw uploadErr;
+      }
       const { _localLogoUri, ...rest } = payload as any;
       const { synced, ...clean } = rest;
       const { error } = await this.supabase.from('companies').update(clean).eq('id', row.record_id);
@@ -324,17 +327,18 @@ export class SyncManager {
       return;
     }
 
-    // Handle storage uploads for photos/signatures (local_uri -> storage)
+    // Handle storage uploads for photos/signatures (local_uri -> storage).
+    // A missing local file is a hard error: silently upserting the row would
+    // ship metadata whose object never exists in storage.
     if ((table === 'job_photos' || table === 'job_signatures') && payload.local_uri) {
       const fileInfo = await FileSystem.getInfoAsync(payload.local_uri);
-      if (fileInfo.exists) {
-        const base64 = await FileSystem.readAsStringAsync(payload.local_uri, { encoding: FileSystem.EncodingType.Base64 });
-        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-        const bucket = table === 'job_signatures' ? 'signatures' : 'job-photos';
-        const contentType = table === 'job_signatures' ? 'image/png' : 'image/jpeg';
-        const { error: uploadErr } = await this.supabase.storage.from(bucket).upload(payload.storage_path, bytes, { contentType, upsert: true });
-        if (uploadErr) throw uploadErr;
-      }
+      if (!fileInfo.exists) throw new Error(`local media file missing: ${payload.local_uri}`);
+      const base64 = await FileSystem.readAsStringAsync(payload.local_uri, { encoding: FileSystem.EncodingType.Base64 });
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const bucket = table === 'job_signatures' ? 'signatures' : 'job-photos';
+      const contentType = table === 'job_signatures' ? 'image/png' : 'image/jpeg';
+      const { error: uploadErr } = await this.supabase.storage.from(bucket).upload(payload.storage_path, bytes, { contentType, upsert: true });
+      if (uploadErr) throw uploadErr;
       const { local_uri, _localPhotoMap, ...rest } = payload as any;
       const { error } = await this.supabase.from(table).upsert(rest, { onConflict: 'id' });
       if (error) throw error;
@@ -345,17 +349,15 @@ export class SyncManager {
     if (table === 'checklist_submissions' && (payload as any)._localPhotoMap) {
       const map = (payload as any)._localPhotoMap as Record<string, string>;
       for (const [key, localUri] of Object.entries(map)) {
-        try {
-          const info = await FileSystem.getInfoAsync(localUri);
-          if (info.exists) {
-            const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
-            const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-            // Reuse job-photos bucket path if available in photo_proofs, else generic
-            const proofs = (payload.photo_proofs as string[]) ?? [];
-            const storagePath = proofs.find(p => p.includes(key)) ?? `${(payload as any).company_id}/${(payload as any).job_id}/check_${key}.jpg`;
-            await this.supabase.storage.from('job-photos').upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true });
-          }
-        } catch {}
+        const info = await FileSystem.getInfoAsync(localUri);
+        if (!info.exists) throw new Error(`checklist photo missing (${key}): ${localUri}`);
+        const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        // Reuse job-photos bucket path if available in photo_proofs, else generic
+        const proofs = (payload.photo_proofs as string[]) ?? [];
+        const storagePath = proofs.find(p => p.includes(key)) ?? `${(payload as any).company_id}/${(payload as any).job_id}/check_${key}.jpg`;
+        const { error: uploadErr } = await this.supabase.storage.from('job-photos').upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true });
+        if (uploadErr) throw uploadErr;
       }
       const { _localPhotoMap, ...rest } = payload as any;
       // Also strip synced
@@ -368,15 +370,15 @@ export class SyncManager {
     // Invoices — handle PDF upload + strip private field
     if (table === 'invoices' && (payload as any)._localPdfUri) {
       const localUri = (payload as any)._localPdfUri as string;
-      try {
-        const info = await FileSystem.getInfoAsync(localUri);
-        if (info.exists) {
-          const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
-          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-          const storagePath = (payload as any).pdf_path as string;
-          await this.supabase.storage.from('invoices').upload(storagePath, bytes, { contentType: 'application/pdf', upsert: true });
-        }
-      } catch {}
+      const info = await FileSystem.getInfoAsync(localUri);
+      if (!info.exists) throw new Error(`invoice PDF missing: ${localUri}`);
+      const b64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const storagePath = (payload as any).pdf_path as string;
+      if (storagePath) {
+        const { error: uploadErr } = await this.supabase.storage.from('invoices').upload(storagePath, bytes, { contentType: 'application/pdf', upsert: true });
+        if (uploadErr) throw uploadErr;
+      }
       const { _localPdfUri, ...rest } = payload as any;
       const { synced, ...clean } = rest;
       if (clean.line_items && typeof clean.line_items === 'string') {
@@ -667,6 +669,61 @@ export class SyncManager {
       this.notify();
     }
     return ids.length;
+  }
+
+  /** Terminal failed rows whose error is a version conflict (manual resolution required). */
+  async getConflicts(): Promise<{ id: string; record_id: string; error: string; created_at: string }[]> {
+    try {
+      const db = getRawDb();
+      const rows = (await db.getAllAsync(
+        `SELECT id, record_id, error, created_at FROM outbox WHERE status='failed' ORDER BY created_at DESC`
+      )) as { id: string; record_id: string; error: string | null; created_at: string }[];
+      return rows.filter(r => isConflictRow('failed', r.error)).map(r => ({ ...r, error: r.error ?? '' }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Manually resolve a version-conflicted job edit (Sync Debug screen):
+   * - `server`: replace the local job with the server's row (discards local edit),
+   *   or delete the local row if it was removed server-side;
+   * - `mine`: rebase the payload onto the server's current version and retry
+   *   (local edit wins); if the row is gone server-side, strip the guard so
+   *   the plain upsert recreates it.
+   */
+  async resolveConflict(outboxId: string, strategy: 'server' | 'mine'): Promise<void> {
+    const db = getRawDb();
+    const row = (await db.getFirstAsync(`SELECT * FROM outbox WHERE id=?`, [outboxId])) as OutboxRow | null;
+    if (!row || !isConflictRow(row.status, row.error)) return;
+
+    if (strategy === 'server') {
+      const { data, error } = await this.supabase.from('jobs').select('*').eq('id', row.record_id).maybeSingle();
+      if (error) throw error;
+      if (data) {
+        // Lift the pull guard so applyPulledRow overwrites the local edit.
+        await db.runAsync(`UPDATE jobs SET synced=1 WHERE id=?`, [row.record_id]);
+        await this.applyPulledRow(db, 'jobs', data);
+      } else {
+        await db.runAsync(`DELETE FROM jobs WHERE id=?`, [row.record_id]);
+      }
+      await db.runAsync(`DELETE FROM outbox WHERE id=?`, [row.id]);
+      this.notify();
+      return;
+    }
+
+    // strategy 'mine'
+    const { data: serverRow, error } = await this.supabase.from('jobs').select('version').eq('id', row.record_id).maybeSingle();
+    if (error) throw error;
+    const rebased = rebaseJobPayload(row.payload, typeof serverRow?.version === 'number' ? serverRow.version : null);
+    if (rebased === null) throw new Error('rebase failed: invalid outbox payload');
+    await db.runAsync(`UPDATE outbox SET payload=?, status='pending', attempts=0, next_retry_at=?, error=NULL WHERE id=?`, [
+      rebased,
+      new Date().toISOString(),
+      row.id,
+    ]);
+    this.notify();
+    this.processQueue().catch(console.error);
   }
 
   subscribe(cb: (s: SyncStatus) => void): () => void {

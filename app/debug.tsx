@@ -4,6 +4,8 @@ import { Stack } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { getRawDb } from '@/db/client';
 import { useSyncStatus } from '@/sync/useSyncStatus';
+import { SyncManager } from '@/sync/SyncManager';
+import { getSupabase } from '@/lib/supabase';
 import { getBackgroundSyncStatus } from '@/lib/backgroundSync';
 import { getAllScheduledCount, getPermissionStatus, scheduleWeeklySummaryDebug, notifyWeeklySummaryNow } from '@/lib/notifications';
 import { addBreadcrumb } from '@/lib/monitoring';
@@ -12,6 +14,7 @@ import * as Notifications from 'expo-notifications';
 export default function DebugScreen() {
   const { isOnline, isSyncing, pendingCount, retryNow } = useSyncStatus();
   const [outbox, setOutbox] = React.useState<any[]>([]);
+  const [conflicts, setConflicts] = React.useState<any[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
   const [bgStatus, setBgStatus] = React.useState<any>(null);
   const [schedCount, setSchedCount] = React.useState(0);
@@ -22,6 +25,10 @@ export default function DebugScreen() {
       const db = getRawDb();
       const rows = await db.getAllAsync(`SELECT id, table_name, record_id, operation, status, attempts, next_retry_at, error, created_at FROM outbox ORDER BY created_at DESC LIMIT 50`);
       setOutbox(rows as any[]);
+      try {
+        const mgr = SyncManager.getInstance(getSupabase());
+        setConflicts(await mgr.getConflicts());
+      } catch {}
       try { setBgStatus(await getBackgroundSyncStatus()); } catch {}
       try { setSchedCount(await getAllScheduledCount()); } catch {}
       try { setPerm(await getPermissionStatus()); } catch {}
@@ -33,13 +40,32 @@ export default function DebugScreen() {
 
   async function handleRetry() { await retryNow(); await load(); }
   async function handleClearFailed() {
-    Alert.alert('Clear failed?', 'Reset failed items to pending (next retry now)', [
+    Alert.alert('Clear failed?', 'Reset failed items to pending (version conflicts excluded — resolve them below)', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reset', onPress: async () => {
-        const db = getRawDb();
-        await db.runAsync(`UPDATE outbox SET status='pending', next_retry_at=? WHERE status='failed'`, [new Date().toISOString()]);
+        const mgr = SyncManager.getInstance(getSupabase());
+        await mgr.resetFailedForRetry().catch(() => 0);
         await load();
       }}
+    ]);
+  }
+
+  async function handleResolve(outboxId: string, strategy: 'server' | 'mine') {
+    const title = strategy === 'mine' ? 'Keep my edit?' : 'Take server version?';
+    const body = strategy === 'mine'
+      ? 'Your edit will overwrite the other device\'s changes on the next sync.'
+      : 'Your local edit of this job will be discarded and replaced with the server\'s version.';
+    Alert.alert(title, body, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Resolve', onPress: async () => {
+        try {
+          const mgr = SyncManager.getInstance(getSupabase());
+          await mgr.resolveConflict(outboxId, strategy);
+        } catch (e: any) {
+          Alert.alert('Resolution failed', String(e?.message ?? e));
+        }
+        await load();
+      }},
     ]);
   }
 
@@ -55,6 +81,23 @@ export default function DebugScreen() {
             <Button title="Clear Failed" size="sm" variant="secondary" onPress={handleClearFailed} />
           </View>
         </View>
+
+        {conflicts.length > 0 && (
+          <View style={[styles.card, styles.conflictCard]}>
+            <Text style={styles.cardTitle}>⚠ Version conflicts ({conflicts.length})</Text>
+            <Text style={styles.hint}>Another device edited this job after you — pick which version wins. Retry deliberately skips these.</Text>
+            {conflicts.map(c => (
+              <View key={c.id} style={styles.conflictRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>job {c.record_id.slice(0, 8)}</Text>
+                  <Text style={styles.rowMeta}>{c.error}</Text>
+                </View>
+                <Button title="Keep mine" size="sm" onPress={() => handleResolve(c.id, 'mine')} />
+                <Button title="Take server" size="sm" variant="secondary" onPress={() => handleResolve(c.id, 'server')} />
+              </View>
+            ))}
+          </View>
+        )}
 
         <Text style={styles.sectionTitle}>Outbox Queue ({outbox.length}) — exponential backoff 1s·2^attempts cap 5m</Text>
         <Text style={styles.hint}>Shows last 50. Tap row to see error. Failed → pending on retry; pending → syncing → deleted on success.</Text>
@@ -114,4 +157,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#FFF', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', gap: 6, marginTop: 8 },
   cardTitle: { fontWeight: '800', color: '#0F172A' },
   bullet: { color: '#475569', fontSize: 12, lineHeight: 16 },
+  conflictCard: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  conflictRow: { backgroundColor: '#FFF', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#FECACA', flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
 });

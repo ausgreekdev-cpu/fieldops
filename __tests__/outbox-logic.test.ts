@@ -5,6 +5,8 @@ const {
   nextOutboxStatus,
   isVersionConflictError,
   isInvoiceNumberConflict,
+  isConflictRow,
+  rebaseJobPayload,
   resolveJobOperation,
   pullBoundary,
   shouldPullNextPage,
@@ -119,5 +121,46 @@ describe('pull pagination decision', () => {
   it('stops after a full page once the cap is already reached', () => {
     expect(shouldPullNextPage(100, 100, 100, 50)).toBe(false);
     expect(shouldPullNextPage(50, 100, 100, 50)).toBe(false); // page itself pushed us to the cap
+  });
+});
+
+describe('conflict row detection (manual resolution)', () => {
+  const conflictMsg = 'version conflict: another device edited this job (expected v3)';
+  it('matches only terminal failed rows with a conflict error', () => {
+    expect(isConflictRow('failed', conflictMsg)).toBe(true);
+  });
+  it('does not match pending/syncing rows or other failures', () => {
+    expect(isConflictRow('pending', conflictMsg)).toBe(false);
+    expect(isConflictRow('syncing', conflictMsg)).toBe(false);
+    expect(isConflictRow('failed', 'network offline')).toBe(false);
+    expect(isConflictRow('failed', null)).toBe(false);
+    expect(isConflictRow('failed', undefined)).toBe(false);
+    expect(isConflictRow(null, null)).toBe(false);
+  });
+});
+
+describe('rebaseJobPayload (conflict resolution)', () => {
+  const payload = JSON.stringify({ id: 'j1', title: 'Paint job', _expected_version: 3, synced: 0 });
+
+  it('"mine": rebases onto the server version, keeping all fields', () => {
+    const out = JSON.parse(rebaseJobPayload(payload, 7)!);
+    expect(out._expected_version).toBe(7);
+    expect(out.id).toBe('j1');
+    expect(out.title).toBe('Paint job');
+  });
+  it('"mine" with server row deleted: strips the version guard (plain upsert recreates)', () => {
+    const out = JSON.parse(rebaseJobPayload(payload, null)!);
+    expect('_expected_version' in out).toBe(false);
+    expect(out.id).toBe('j1');
+  });
+  it('rejects invalid server versions', () => {
+    expect(rebaseJobPayload(payload, 0)).toBeNull();
+    expect(rebaseJobPayload(payload, -1)).toBeNull();
+    expect(rebaseJobPayload(payload, 2.5)).toBeNull();
+    expect(rebaseJobPayload(payload, NaN)).toBeNull();
+  });
+  it('rejects malformed payload JSON', () => {
+    expect(rebaseJobPayload('not-json{', 4)).toBeNull();
+    expect(rebaseJobPayload('', 4)).toBeNull();
   });
 });

@@ -37,6 +37,34 @@ export function shouldRetryOnManualReset(error: string | null | undefined): bool
   return !isVersionConflictError(error);
 }
 
+/** A row the user must resolve manually: terminal failure caused by a version conflict. */
+export function isConflictRow(status: string | null | undefined, error: string | null | undefined): boolean {
+  return status === 'failed' && isVersionConflictError(error);
+}
+
+/**
+ * Rebase a conflicted job outbox payload for a manual resolution:
+ * - `serverVersion = n` → retry against the server's current version (keep
+ *   local edit, overwrite the other device);
+ * - `serverVersion = null` → strip the version guard so the plain upsert
+ *   path recreates the row (it was deleted server-side).
+ * Returns the new JSON payload, or null when input/version is invalid.
+ */
+export function rebaseJobPayload(payloadJson: string, serverVersion: number | null): string | null {
+  try {
+    const p = JSON.parse(payloadJson);
+    if (serverVersion === null) {
+      delete p._expected_version;
+    } else {
+      if (!Number.isInteger(serverVersion) || serverVersion < 1) return null;
+      p._expected_version = serverVersion;
+    }
+    return JSON.stringify(p);
+  } catch {
+    return null;
+  }
+}
+
 /** Postgres unique-violation (23505) on the invoice number index. */
 export function isInvoiceNumberConflict(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false;
