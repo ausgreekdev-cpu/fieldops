@@ -79,7 +79,8 @@
   "jest": {
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/scripts/"
+      "/scripts/",
+      "/supabase/"
     ],
     "transform": {
       "^.+\\.[jt]sx?$": [

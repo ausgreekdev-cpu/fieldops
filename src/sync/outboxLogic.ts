@@ -61,3 +61,13 @@ export function pullBoundary(maxUpdatedIso: string, previousIso: string, skewMs 
   const candidate = new Date(new Date(maxUpdatedIso).getTime() - skewMs).toISOString();
   return candidate > previousIso ? candidate : previousIso;
 }
+
+/**
+ * Pull loop: fetch another page only when the current page was full and the
+ * per-cycle row cap isn't hit. The boundary still advances (see pull()), so
+ * a capped cycle resumes exactly where it stopped on the next run.
+ */
+export function shouldPullNextPage(totalAfterPage: number, pageLen: number, pageSize: number, maxRows: number): boolean {
+  if (pageLen < pageSize) return false;
+  return totalAfterPage < maxRows;
+}

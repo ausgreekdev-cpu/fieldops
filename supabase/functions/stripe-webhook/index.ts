@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { corsHeaders } from '../_shared/cors.ts';
 import { getAdminClient } from '../_shared/supabaseAdmin.ts';
+import { verifyStripeSignature, amountMatchesPaid } from '../_shared/stripeVerify.ts';
 
 // Stripe webhook — hardened HMAC, fail-closed, multi-v1, timestamp tolerance, idempotency
 Deno.serve(async (req: Request) => {
@@ -45,11 +46,11 @@ Deno.serve(async (req: Request) => {
             // Defense in depth: only mark paid when the paid amount matches the invoice
             // (checkout.session.amount_total / payment_intent.amount, both in cents)
             const paidCents = obj?.amount_total ?? obj?.amount;
-            const expectedCents = Math.round(Number(inv.total) * 100);
-            if (paidCents != null && Math.abs(Number(paidCents) - expectedCents) <= 1) {
+            if (amountMatchesPaid(paidCents, Number(inv.total))) {
               await admin.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', invoiceId);
               if (inv.job_id) await admin.from('jobs').update({ status: 'invoiced' }).eq('id', inv.job_id);
             } else {
+              const expectedCents = Math.round(Number(inv.total) * 100);
               console.warn('[stripe-webhook] amount mismatch — not marking paid', { invoiceId, paidCents, expectedCents });
               await admin.from('sync_logs').insert({
                 company_id: inv.company_id,
@@ -88,34 +89,3 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function verifyStripeSignature(payload: string, sigHeader: string, secret: string): Promise<boolean> {
-  try {
-    // Stripe sends: t=timestamp,v1=hex,v1=hex (multiple for rotation) — collect all v1
-    const parts = sigHeader.split(',').map(p => p.trim());
-    const tPart = parts.find(p => p.startsWith('t='));
-    const v1s = parts.filter(p => p.startsWith('v1=')).map(p => p.slice(3));
-    if (!tPart || v1s.length === 0) return false;
-    const t = tPart.slice(2);
-    const ts = Number(t);
-    if (!Number.isFinite(ts)) return false;
-    // 5 minute tolerance (replay protection)
-    const now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - ts) > 300) return false;
-
-    const signedPayload = `${t}.${payload}`;
-    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
-    const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // constant-time compare for each v1 (avoid timing leak)
-    const hexBytes = new TextEncoder().encode(hex);
-    for (const v1 of v1s) {
-      const v1Bytes = new TextEncoder().encode(v1);
-      if (v1Bytes.length !== hexBytes.length) continue;
-      let diff = 0;
-      for (let i = 0; i < hexBytes.length; i++) diff |= hexBytes[i] ^ v1Bytes[i];
-      if (diff === 0) return true;
-    }
-    return false;
-  } catch { return false; }
-}

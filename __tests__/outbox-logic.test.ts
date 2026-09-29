@@ -7,6 +7,7 @@ const {
   isInvoiceNumberConflict,
   resolveJobOperation,
   pullBoundary,
+  shouldPullNextPage,
   shouldRetryOnManualReset,
   MAX_ATTEMPTS,
   MAX_DELAY_MS,
@@ -99,5 +100,24 @@ describe('manual failed-reset (banner Retry)', () => {
     expect(shouldRetryOnManualReset(null)).toBe(true);
     expect(shouldRetryOnManualReset(undefined)).toBe(true);
     expect(shouldRetryOnManualReset('')).toBe(true);
+  });
+});
+
+describe('pull pagination decision', () => {
+  it('continues while pages are full and under the cap', () => {
+    expect(shouldPullNextPage(200, 200, 200, 2000)).toBe(true);
+    expect(shouldPullNextPage(1800, 200, 200, 2000)).toBe(true);
+  });
+  it('stops on a partial page (no more rows)', () => {
+    expect(shouldPullNextPage(250, 50, 200, 2000)).toBe(false);
+    expect(shouldPullNextPage(0, 0, 200, 2000)).toBe(false);
+  });
+  it('stops at the per-cycle row cap (boundary resumes next cycle)', () => {
+    expect(shouldPullNextPage(2000, 200, 200, 2000)).toBe(false);
+    expect(shouldPullNextPage(2200, 200, 200, 2000)).toBe(false);
+  });
+  it('stops after a full page once the cap is already reached', () => {
+    expect(shouldPullNextPage(100, 100, 100, 50)).toBe(false);
+    expect(shouldPullNextPage(50, 100, 100, 50)).toBe(false); // page itself pushed us to the cap
   });
 });

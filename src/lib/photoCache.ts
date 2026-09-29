@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system';
 import { getRawDb } from '@/db/client';
+import { selectEvictions, EvictCandidate } from './photoCacheLogic';
 
 const MAX_BYTES = 150 * 1024 * 1024; // 150 MB
 const DIR = FileSystem.documentDirectory ?? '';
@@ -56,29 +57,19 @@ export async function evictLRUIfNeeded() {
   if (size < MAX_BYTES) return;
   try {
     const protectedUris = await getProtectedUris();
-    const isProtected = (uri: string, name: string) => {
-      if (protectedUris.has(uri)) return true;
-      for (const p of protectedUris) {
-        if (p.endsWith(`/${name}`)) return true;
-      }
-      return false;
-    };
 
     const files = await FileSystem.readDirectoryAsync(DIR);
-    const infos = await Promise.all(files.filter(f => f.match(/\.(jpg|png|jpeg)$/i)).map(async f => {
-      const info = await FileSystem.getInfoAsync(DIR + f);
-      return { name: f, uri: DIR + f, mod: (info as any).modificationTime ?? 0, size: (info as any).size ?? 0, exists: info.exists };
-    }));
-    infos.sort((a, b) => a.mod - b.mod); // oldest first
-    let cur = size;
-    for (const file of infos) {
-      if (cur < MAX_BYTES * 0.7) break; // target 70%
-      if (!file.exists) continue;
-      // Never delete a file that still needs to be uploaded (outbox pending)
-      if (isProtected(file.uri, file.name)) continue;
-      await FileSystem.deleteAsync(file.uri, { idempotent: true });
-      cur -= file.size;
-      console.log('[photoCache] evicted', file.name);
+    const infos: EvictCandidate[] = await Promise.all(
+      files
+        .filter(f => f.match(/\.(jpg|png|jpeg)$/i))
+        .map(async f => {
+          const info = await FileSystem.getInfoAsync(DIR + f);
+          return { name: f, uri: DIR + f, mod: (info as any).modificationTime ?? 0, size: (info as any).size ?? 0, exists: info.exists };
+        })
+    );
+    for (const uri of selectEvictions(infos, protectedUris, size, MAX_BYTES)) {
+      await FileSystem.deleteAsync(uri, { idempotent: true });
+      console.log('[photoCache] evicted', uri.replace(DIR, ''));
     }
   } catch (e) { console.warn('[photoCache]', e); }
 }

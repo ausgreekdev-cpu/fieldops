@@ -24,6 +24,7 @@ import {
   nextOutboxStatus,
   pullBoundary,
   resolveJobOperation,
+  shouldPullNextPage,
   shouldRetryOnManualReset,
 } from './outboxLogic';
 
@@ -464,8 +465,7 @@ export class SyncManager {
       total += data.length;
       const last = data[data.length - 1] as { updated_at?: string };
       if (last.updated_at && last.updated_at > maxUpdated) maxUpdated = last.updated_at;
-      if (data.length < PULL_PAGE_SIZE) break;
-      if (total >= PULL_MAX_ROWS) break; // boundary below resumes next cycle
+      if (!shouldPullNextPage(total, data.length, PULL_PAGE_SIZE, PULL_MAX_ROWS)) break;
       offset += PULL_PAGE_SIZE;
     }
 

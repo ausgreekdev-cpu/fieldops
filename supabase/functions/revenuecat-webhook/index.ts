@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { corsHeaders } from '../_shared/cors.ts';
 import { getAdminClient } from '../_shared/supabaseAdmin.ts';
+import { tierForRevenueCatEvent } from '../_shared/entitlements.ts';
 
 // RevenueCat webhook for App Store / Play entitlements → companies.subscription_tier
 // Configure in RevenueCat Dashboard: Integrations → Webhooks → URL: https://<project>.supabase.co/functions/v1/revenuecat-webhook
@@ -33,12 +34,8 @@ Deno.serve(async (req: Request) => {
     const { data: userRow } = await admin.from('users').select('company_id').eq('id', appUserId).single();
     if (!userRow?.company_id) return new Response(JSON.stringify({ received: true, note: 'no company' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    let tier: 'free' | 'pro' | 'team' = 'free';
-    if (['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'BILLING_ISSUE', 'PRODUCT_CHANGE'].includes(type)) {
-      tier = entitlementId === 'team' ? 'team' : 'pro';
-    } else if (['CANCELLATION', 'EXPIRATION', 'REFUND'].includes(type)) {
-      tier = 'free';
-    } else {
+    const tier = tierForRevenueCatEvent(type, entitlementId);
+    if (tier === null) {
       // for TEST / non-subscription events keep current
       return new Response(JSON.stringify({ received: true, type }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
