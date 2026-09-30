@@ -60,8 +60,8 @@ app/checklists/[id]  template CRUD
 src/components/ui  Button(48dp+), OfflineBanner, JobCard, VoiceButton(useAudioRecorder), SignaturePad, Paywall
 src/features  checklists (ChecklistForm, useChecklists), invoices (generateInvoice, useInvoices, pdfWriter), jobs
 src/db  schema, client, seed
-src/sync  SyncManager (outbox, backoff, storage uploads, markRecordSynced), outboxLogic (pure status/backoff helpers), useSyncStatus, mutations
-src/lib  supabase (SecureStore), revenuecat, maps
+src/sync  SyncManager (outbox, backoff, pullAll hydration, version-conflict resolution, storage uploads), outboxLogic (pure status/backoff/conflict helpers), useSyncStatus, mutations
+src/lib  supabase (SecureStore), revenuecat, maps, photoCache (+ pure photoCacheLogic), backgroundSync, monitoring
 supabase/functions  process-voice-log, parse-receipt, create-payment-link, stripe-webhook, revenuecat-webhook, _shared
 scripts  verify-offline.sh, e2e-offline.test.ts
 ```
@@ -72,8 +72,9 @@ scripts  verify-offline.sh, e2e-offline.test.ts
 
 ## Verification
 ```bash
-npm run typecheck  # tsc --noEmit --skipLibCheck (functions excluded)
-npm test           # jest e2e-offline.test.ts (in-memory sqlite + mock supabase)
+npm run typecheck  # tsc --noEmit
+npm test           # jest — 48 unit tests (outboxLogic, photoCacheLogic, pdf, sync, validation)
+deno test supabase/functions/_shared/  # webhook signature/amount/entitlement tests (run in CI)
 bash scripts/verify-offline.sh
 # Manual: airplane mode create job → checklist+signature+voice → restore → check Supabase + Storage
 ```
