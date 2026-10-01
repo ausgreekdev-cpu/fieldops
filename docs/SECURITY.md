@@ -29,13 +29,14 @@ Findings fixed in this audit:
 3. **Webhooks failed open without secrets** — now fail closed: 503 `SECRET_NOT_CONFIGURED` until `STRIPE_WEBHOOK_SECRET` / `REVENUECAT_WEBHOOK_SECRET` are set. Deploy must be paired with `supabase secrets set`.
 4. **No typecheck for edge functions** — `deno check supabase/functions/*/index.ts` runs locally and in CI (`deno-check` job).
 
-Deployment status: **not deployed** as of this audit (all functions returned `NOT_FOUND` against prod) — deploy via `supabase functions deploy` after `supabase login`.
+Deployment status: **deployed** 2026-09-30 — all 5 functions live (`supabase functions list`): `create-payment-link`, `process-voice-log`, `parse-receipt` with `verify_jwt=true`; `stripe-webhook`, `revenuecat-webhook` public (`--no-verify-jwt`, guarded by signature/bearer checks). Verified live: webhook auth 401/401/200, stripe fail-closed 503, JWT gates 401, CORS 200.
 
 ## Checklist
 - [x] Verified no secrets committed — `git log -S "sb_publishable"` + grep show only rotation warnings in docs, never the key; `.env`/`supabase/.env.local` gitignored with placeholders only
 - [x] ~~Rotate `sb_publishable_...`~~ — **not required.** Publishable keys are client-public by design (they ship in every app bundle and appear in every network request); chat exposure adds no capability beyond that. Rotation would break installed clients for no security gain. Keep publishable keys out of *server* contexts (service_role stays in Edge Functions only).
 - [ ] Enable Supabase email confirmation + SMS OTP rate limiting in Dashboard
-- [ ] Set `STRIPE_WEBHOOK_SECRET` — code verifies `stripe-signature` fail-closed (503 until set)
-- [ ] Set `REVENUECAT_WEBHOOK_SECRET` — code verifies `Authorization: Bearer` fail-closed (503 until set)
-- [ ] Deploy the 5 edge functions (currently NOT_FOUND against prod)
-- [ ] Replace placeholder `assets/*.png` before store submit
+- [ ] Set `STRIPE_WEBHOOK_SECRET` — code verifies `stripe-signature` fail-closed (503 until set); also set `STRIPE_SECRET_KEY` for `create-payment-link`
+- [x] Set `REVENUECAT_WEBHOOK_SECRET` — live, verified 401 (missing/wrong bearer) → 200 (correct); configure RevenueCat webhook Authorization as `Bearer <same value>`
+- [x] Deploy the 5 edge functions — done 2026-09-30, all live with expected verify_jwt flags
+- [x] Replace placeholder `assets/*.png` — assets are branded (navy/white F); adaptive icon regenerated as transparent keyline foreground
+- [ ] Set `OPENAI_API_KEY` for `parse-receipt` + `process-voice-log` (`AI_PROVIDER=openai`)
