@@ -76,6 +76,8 @@ npm run typecheck  # tsc --noEmit
 npm test           # jest — 48 unit tests (outboxLogic, photoCacheLogic, pdf, sync, validation)
 deno test supabase/functions/_shared/  # webhook signature/amount/entitlement tests (run in CI)
 bash scripts/verify-offline.sh
+# Run web locally: npm run build:web && python3 scripts/serve-web.py   → http://localhost:3000
+# Dev server (hot reload): npm start → http://localhost:8081/login (web SSR needs postinstall patch; auto-applied)
 # Manual: airplane mode create job → checklist+signature+voice → restore → check Supabase + Storage
 ```
 
