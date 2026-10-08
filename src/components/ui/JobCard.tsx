@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable, StyleSheet, Linking } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Linking, Platform } from 'react-native';
 import type { JobStatus } from '@/types';
 
 const statusColor: Record<JobStatus, string> = {
@@ -65,10 +65,11 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
     elevation: 2,
+    ...Platform.select({
+      web: { boxShadow: '0px 0px 8px rgba(15, 23, 42, 0.06)' },
+      default: { shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 8 },
+    }),
   },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },

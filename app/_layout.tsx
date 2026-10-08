@@ -78,7 +78,6 @@ export default function RootLayout() {
         <OfflineBanner />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F8FAFC' } }}>
           <Stack.Screen name="connect" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="jobs/[id]" options={{ presentation: 'card', headerShown: true, title: 'Job Detail' }} />
         </Stack>
