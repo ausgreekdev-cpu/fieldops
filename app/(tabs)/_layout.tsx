@@ -13,10 +13,10 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
       }}
     >
-      <Tabs.Screen name="jobs" options={{ title: 'Jobs', tabBarIcon: () => <Text style={{ fontSize: 20 }}>🗂</Text> }} />
-      <Tabs.Screen name="checklists" options={{ title: 'Safety', tabBarIcon: () => <Text style={{ fontSize: 20 }}>✓</Text> }} />
-      <Tabs.Screen name="invoices" options={{ title: 'Invoices', tabBarIcon: () => <Text style={{ fontSize: 20 }}>＄</Text> }} />
-      <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text> }} />
+      <Tabs.Screen name="jobs/index" options={{ title: 'Jobs', tabBarIcon: () => <Text style={{ fontSize: 20 }}>🗂</Text> }} />
+      <Tabs.Screen name="checklists/index" options={{ title: 'Safety', tabBarIcon: () => <Text style={{ fontSize: 20 }}>✓</Text> }} />
+      <Tabs.Screen name="invoices/index" options={{ title: 'Invoices', tabBarIcon: () => <Text style={{ fontSize: 20 }}>＄</Text> }} />
+      <Tabs.Screen name="team/index" options={{ title: 'Team', tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text> }} />
     </Tabs>
   );
 }
